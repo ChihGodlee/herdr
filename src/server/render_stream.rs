@@ -323,10 +323,17 @@ fn focused_terminal_cursor(app_state: &AppState) -> Option<CursorState> {
         .find(|info| info.is_focused)?;
     let rt = app_state.runtime_for_pane_in_workspace(ws_idx, info.id)?;
     let cursor = rt.cursor_state(info.inner_rect, true)?;
+    // When `[ui] track_ime_cursor_in_panes` is enabled, force the cursor
+    // visible so macOS IMEs keep tracking the candidate-window position even
+    // when the focused pane requested `?25l` (e.g. Claude Code / pi / codex
+    // hide the native cursor and paint their own reversed-cell prompt).
+    // Scrollback still suppresses the cursor — the cursor row is off-screen.
+    let force_visible = app_state.track_ime_cursor_in_panes;
+    let visible = (cursor.visible || force_visible) && !crate::ui::pane_is_scrolled_back(rt);
     Some(CursorState {
         x: cursor.x,
         y: cursor.y,
-        visible: cursor.visible && !crate::ui::pane_is_scrolled_back(rt),
+        visible,
         shape: cursor.shape,
     })
 }

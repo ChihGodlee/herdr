@@ -918,6 +918,11 @@ pub struct AppState {
     pub confirm_close: bool,
     pub prompt_new_tab_name: bool,
     pub show_agent_labels_on_pane_borders: bool,
+    /// Track the IME candidate window cursor in terminal panes even when an
+    /// inner program (Claude Code / pi / codex) hides the native cursor.
+    /// When false, the focused pane's `?25l` is honored end-to-end and macOS
+    /// IMEs may stop tracking the candidate window during CJK input.
+    pub track_ime_cursor_in_panes: bool,
     pub kitty_graphics_enabled: bool,
     pub pane_scrollback_limit_bytes: usize,
     #[allow(dead_code)] // kept for backward compat; palette.accent is the source of truth
@@ -1159,6 +1164,7 @@ impl AppState {
             confirm_close: true,
             prompt_new_tab_name: true,
             show_agent_labels_on_pane_borders: false,
+            track_ime_cursor_in_panes: false,
             kitty_graphics_enabled: false,
             pane_scrollback_limit_bytes: crate::config::DEFAULT_SCROLLBACK_LIMIT_BYTES,
             accent: Color::Cyan,

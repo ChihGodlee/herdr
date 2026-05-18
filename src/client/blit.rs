@@ -316,9 +316,11 @@ fn blit_frame_to_with_cursor_memory(
 
     // Some native IMEs track candidate-window placement from normal terminal
     // cursor updates and may not observe cursor moves emitted inside synchronized
-    // output. Re-emit only the resolved final cursor anchor after the sync block;
-    // intermediate paint cursor positions remain hidden and the focused pane's
-    // requested cursor visibility is preserved.
+    // output. Re-emit the resolved cursor anchor after the sync block so the
+    // host terminal sees the final state. Whether the cursor is shown or hidden
+    // here is controlled by the upstream visibility chain; when
+    // `[ui] track_ime_cursor_in_panes` is enabled the server upgrades a hidden
+    // focused-pane cursor to visible so macOS IMEs keep tracking it.
     write_ime_anchor_cursor_state(&mut writer, host_cursor);
     let _ = writer.flush();
 }

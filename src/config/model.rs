@@ -172,6 +172,13 @@ pub struct UiConfig {
     pub prompt_new_tab_name: bool,
     /// Show agent labels in split pane borders when no manual pane label is set. Default: false.
     pub show_agent_labels_on_pane_borders: bool,
+    /// Keep the IME candidate window tracking the cursor inside terminal
+    /// panes, even when an inner program (Claude Code / pi / codex) hides
+    /// the native cursor and paints its own reversed-cell prompt.
+    /// Trade-off: programs that hide the cursor without painting a
+    /// replacement (e.g. vim normal mode) will show an extra block cursor
+    /// in the outer terminal when this is enabled. Default: false.
+    pub track_ime_cursor_in_panes: bool,
     /// Agent sidebar scope. Saved values are "current" or "all". Default: "all".
     pub agent_panel_scope: AgentPanelScopeConfig,
     /// Accent color for highlights, borders, and navigation UI.
@@ -247,6 +254,7 @@ impl Default for UiConfig {
             confirm_close: true,
             prompt_new_tab_name: true,
             show_agent_labels_on_pane_borders: false,
+            track_ime_cursor_in_panes: false,
             agent_panel_scope: AgentPanelScopeConfig::All,
             accent: "cyan".into(),
             toast: ToastConfig::default(),

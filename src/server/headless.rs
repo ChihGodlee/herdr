@@ -2575,6 +2575,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn virtual_render_forces_focused_pane_cursor_visible_when_track_ime_enabled() {
+        let mut state = AppState::test_new();
+        let mut ws = crate::workspace::Workspace::test_new("test");
+        let pane_id = ws.tabs[0].root_pane;
+        ws.insert_test_runtime(
+            pane_id,
+            crate::terminal::TerminalRuntime::test_with_screen_bytes(20, 5, b"left\x1b[?25l"),
+        );
+
+        state.workspaces = vec![ws];
+        state.active = Some(0);
+        state.selected = 0;
+        state.mode = crate::app::Mode::Terminal;
+        state.track_ime_cursor_in_panes = true;
+
+        let area = Rect::new(0, 0, 80, 24);
+        let (_buffer, cursor) =
+            crate::server::render_stream::render_virtual(&mut state, area, true);
+        let pane = state
+            .view
+            .pane_infos
+            .iter()
+            .find(|info| info.id == pane_id)
+            .expect("focused pane info");
+
+        assert_eq!(
+            cursor,
+            Some(CursorState {
+                x: pane.inner_rect.x + 4,
+                y: pane.inner_rect.y,
+                visible: true,
+                shape: cursor.as_ref().map(|c| c.shape).unwrap_or(0),
+            }),
+            "track_ime_cursor_in_panes=true must upgrade hidden focused-pane cursor to visible \
+             so macOS IMEs can keep tracking the candidate window"
+        );
+    }
+
+    #[tokio::test]
     async fn virtual_render_omits_focused_pane_cursor_while_mobile_switcher_open() {
         let mut state = AppState::test_new();
         let mut ws = crate::workspace::Workspace::test_new("test");

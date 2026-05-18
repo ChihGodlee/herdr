@@ -793,7 +793,13 @@ impl GhosttyPaneTerminal {
             }
         }
 
-        if show_cursor && render_state.cursor_visible().ok() == Some(true) {
+        // Forward cursor position whenever the pane is the focused interactive
+        // target, even if the pane app hid the native cursor (e.g. Claude Code /
+        // pi / codex which hide cursor and paint a reversed-cell prompt). The
+        // OS-level IME candidate window needs the position regardless of the
+        // visibility flag. Trade-off: programs that hide cursor without painting
+        // their own will show an extra block cursor in the outer terminal.
+        if show_cursor {
             if let Ok(Some(cursor)) = render_state.cursor_viewport() {
                 if cursor.x < area.width && cursor.y < area.height {
                     frame.set_cursor_position((area.x + cursor.x, area.y + cursor.y));

@@ -1212,18 +1212,18 @@ mod tests {
             state::SidebarWidthSource::ConfigDefault
         );
 
-        std::fs::write(&path, "[ui]\nsidebar_width = 42\n").unwrap();
+        std::fs::write(&path, "[ui]\nsidebar_width = 34\n").unwrap();
         let report = app.reload_config();
         assert_eq!(report.status, crate::config::ConfigReloadStatus::Applied);
-        assert_eq!(app.state.default_sidebar_width, 42);
-        assert_eq!(app.state.sidebar_width, 42);
+        assert_eq!(app.state.default_sidebar_width, 34);
+        assert_eq!(app.state.sidebar_width, 34);
 
         app.state.sidebar_width = 31;
         app.state.sidebar_width_source = state::SidebarWidthSource::Manual;
-        std::fs::write(&path, "[ui]\nsidebar_width = 44\n").unwrap();
+        std::fs::write(&path, "[ui]\nsidebar_width = 35\n").unwrap();
         let report = app.reload_config();
         assert_eq!(report.status, crate::config::ConfigReloadStatus::Applied);
-        assert_eq!(app.state.default_sidebar_width, 44);
+        assert_eq!(app.state.default_sidebar_width, 35);
         assert_eq!(app.state.sidebar_width, 31);
 
         std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);

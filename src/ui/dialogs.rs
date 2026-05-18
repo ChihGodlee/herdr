@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Clear, Paragraph},
     Frame,
 };
+use unicode_width::UnicodeWidthStr;
 
 use super::widgets::{
     action_button_row_rects, centered_popup_rect, panel_contrast_fg, render_action_button,
@@ -74,6 +75,17 @@ pub(super) fn render_rename_overlay(app: &AppState, frame: &mut Frame, area: Rec
         ),
         input_rect,
     );
+
+    // Report the real cursor position so the OS-level IME candidate window
+    // can follow the input cursor when typing CJK / Japanese / Korean.
+    // The cursor lands on the painted █ cell.
+    let cursor_col = input_rect
+        .x
+        .saturating_add(1)
+        .saturating_add(UnicodeWidthStr::width(app.name_input.as_str()) as u16);
+    if cursor_col < input_rect.x.saturating_add(input_rect.width) {
+        frame.set_cursor_position((cursor_col, input_rect.y));
+    }
 
     let (save_rect, clear_rect, cancel_rect) = rename_button_rects(inner);
 

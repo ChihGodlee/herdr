@@ -413,12 +413,15 @@ fn write_host_cursor_state(writer: &mut impl Write, cursor: HostCursorState, las
 }
 
 fn write_ime_anchor_cursor_state(writer: &mut impl Write, cursor: HostCursorState) {
+    // Only re-emit cursor POSITION post-sync. Visibility was set inside the
+    // synchronized output block by write_host_cursor_state (matching the
+    // app's `?25l`/`?25h`). Sending CUP without DECTCEM here updates the
+    // terminal's internal cursor position so macOS IMEs (querying via
+    // NSTextInputClient.firstRectForCharacterRange) see the fresh location,
+    // while the app's requested visibility is preserved. cursor.visible /
+    // cursor.shape are intentionally unused — kept in the signature for
+    // callsite ergonomics.
     write_cursor_position(writer, cursor.position);
-    if cursor.visible {
-        let _ = writer.write_all(b"\x1b[?25h");
-    } else {
-        let _ = writer.write_all(b"\x1b[?25l");
-    }
 }
 
 fn write_all_cells(writer: &mut impl Write, frame: &FrameData) {
@@ -834,8 +837,8 @@ mod tests {
             .expect("should end synchronized output");
         let trailing_cursor = &output_str[sync_end + "\x1b[?2026l".len()..];
         assert_eq!(
-            trailing_cursor, "\x1b[2;3H\x1b[?25h",
-            "should expose only the final cursor state after synchronized output"
+            trailing_cursor, "\x1b[2;3H",
+            "post-sync IME anchor should only re-emit cursor position (no DECTCEM)"
         );
     }
 
@@ -871,8 +874,8 @@ mod tests {
         );
         let trailing_cursor = &output_str[sync_end + "\x1b[?2026l".len()..];
         assert_eq!(
-            trailing_cursor, "\x1b[1;1H\x1b[?25h",
-            "IME anchor update should preserve the existing position/visibility-only contract"
+            trailing_cursor, "\x1b[1;1H",
+            "post-sync IME anchor should only re-emit cursor position (no DECTCEM)"
         );
     }
 
@@ -930,8 +933,12 @@ mod tests {
             .expect("should end synchronized output");
         let trailing_cursor = &output_str[sync_end + "\x1b[?2026l".len()..];
         assert_eq!(
-            trailing_cursor, "\x1b[2;3H\x1b[?25l",
-            "should repeat the explicit hidden cursor position while preserving visibility"
+            trailing_cursor, "\x1b[2;3H",
+            "post-sync IME anchor re-emits hidden cursor position only — \
+             visibility was already set inside the sync block by \
+             write_host_cursor_state, so DECTCEM is intentionally omitted \
+             so macOS IMEs can track position without flipping `?25l` back \
+             to `?25h`"
         );
     }
 

@@ -2503,7 +2503,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn virtual_render_preserves_explicit_frame_cursor_position() {
+    async fn virtual_render_does_not_propagate_focused_pane_cursor_under_option_a() {
+        // Option A: cursor is painted as a REVERSED cell at the focused
+        // pane's cursor position; the cursor protocol is suppressed so the
+        // OUTER terminal emits ?25l. virtual_render returns None for the
+        // protocol cursor regardless of whether the inner app requested
+        // ?25h or ?25l.
         let mut state = AppState::test_new();
         let mut ws = crate::workspace::Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
@@ -2520,26 +2525,14 @@ mod tests {
         let area = Rect::new(0, 0, 80, 24);
         let (_buffer, cursor) =
             crate::server::render_stream::render_virtual(&mut state, area, true);
-        let pane = state
-            .view
-            .pane_infos
-            .iter()
-            .find(|info| info.id == pane_id)
-            .expect("focused pane info");
 
-        assert_eq!(
-            cursor,
-            Some(CursorState {
-                x: pane.inner_rect.x + 4,
-                y: pane.inner_rect.y,
-                visible: true,
-                shape: cursor.as_ref().map(|c| c.shape).unwrap_or(0),
-            })
-        );
+        assert_eq!(cursor, None);
     }
 
     #[tokio::test]
-    async fn virtual_render_preserves_hidden_focused_pane_cursor_position() {
+    async fn virtual_render_does_not_propagate_hidden_focused_pane_cursor_under_option_a() {
+        // Option A: same as the visible case — protocol cursor is None.
+        // The pane painted REVERSED in the cell only when cursor.visible.
         let mut state = AppState::test_new();
         let mut ws = crate::workspace::Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
@@ -2556,26 +2549,17 @@ mod tests {
         let area = Rect::new(0, 0, 80, 24);
         let (_buffer, cursor) =
             crate::server::render_stream::render_virtual(&mut state, area, true);
-        let pane = state
-            .view
-            .pane_infos
-            .iter()
-            .find(|info| info.id == pane_id)
-            .expect("focused pane info");
 
-        assert_eq!(
-            cursor,
-            Some(CursorState {
-                x: pane.inner_rect.x + 4,
-                y: pane.inner_rect.y,
-                visible: false,
-                shape: cursor.as_ref().map(|c| c.shape).unwrap_or(0),
-            })
-        );
+        assert_eq!(cursor, None);
     }
 
     #[tokio::test]
-    async fn virtual_render_forces_focused_pane_cursor_visible_when_track_ime_enabled() {
+    async fn virtual_render_ignores_track_ime_config_under_option_a() {
+        // Option A: track_ime_cursor_in_panes is now effectively dead code at
+        // the protocol layer — focused_terminal_cursor returns None
+        // regardless of the flag. (The config field is preserved for
+        // backward-compat with existing user configs but does not influence
+        // pane cursor propagation.)
         let mut state = AppState::test_new();
         let mut ws = crate::workspace::Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
@@ -2593,23 +2577,11 @@ mod tests {
         let area = Rect::new(0, 0, 80, 24);
         let (_buffer, cursor) =
             crate::server::render_stream::render_virtual(&mut state, area, true);
-        let pane = state
-            .view
-            .pane_infos
-            .iter()
-            .find(|info| info.id == pane_id)
-            .expect("focused pane info");
 
         assert_eq!(
-            cursor,
-            Some(CursorState {
-                x: pane.inner_rect.x + 4,
-                y: pane.inner_rect.y,
-                visible: true,
-                shape: cursor.as_ref().map(|c| c.shape).unwrap_or(0),
-            }),
-            "track_ime_cursor_in_panes=true must upgrade hidden focused-pane cursor to visible \
-             so macOS IMEs can keep tracking the candidate window"
+            cursor, None,
+            "Option A suppresses the focused pane's protocol cursor regardless of \
+             track_ime_cursor_in_panes — IME tracking trade-off is documented."
         );
     }
 

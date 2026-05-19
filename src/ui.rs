@@ -421,9 +421,18 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| render(&app, frame)).unwrap();
 
-        terminal
-            .backend_mut()
-            .assert_cursor_position((focused.inner_rect.x + 4, focused.inner_rect.y));
+        // Option A: cursor is painted as a REVERSED cell at the focused
+        // pane's cursor position rather than forwarded to OUTER via
+        // frame.set_cursor_position. Verify the focused pane's cursor cell
+        // got the REVERSED modifier.
+        let buf = terminal.backend().buffer();
+        let cursor_cell = &buf[(focused.inner_rect.x + 4, focused.inner_rect.y)];
+        assert!(
+            cursor_cell
+                .modifier
+                .contains(ratatui::style::Modifier::REVERSED),
+            "focused pane's cursor cell must be REVERSED-painted"
+        );
     }
 
     #[test]

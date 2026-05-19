@@ -310,30 +310,20 @@ pub(crate) fn visible_hyperlinks(app_state: &AppState) -> Vec<((u16, u16), Strin
     links
 }
 
-fn focused_terminal_cursor(app_state: &AppState) -> Option<CursorState> {
-    if app_state.mode != Mode::Terminal {
-        return None;
-    }
-
-    let ws_idx = app_state.active?;
-    let info = app_state
-        .view
-        .pane_infos
-        .iter()
-        .find(|info| info.is_focused)?;
-    let rt = app_state.runtime_for_pane_in_workspace(ws_idx, info.id)?;
-    let cursor = rt.cursor_state(info.inner_rect, true)?;
-    // Visibility honours the focused pane's request (`?25l`/`?25h`).
-    // Scrollback still suppresses the cursor — the cursor row is off-screen.
-    // IME tracking is preserved by `write_ime_anchor_cursor_state` re-emitting
-    // CUP (without DECTCEM) after the synchronized output block, so the host
-    // terminal's NSTextInputClient reports a fresh position even when the
-    // pane requested the cursor hidden.
-    let visible = cursor.visible && !crate::ui::pane_is_scrolled_back(rt);
-    Some(CursorState {
-        x: cursor.x,
-        y: cursor.y,
-        visible,
-        shape: cursor.shape,
-    })
+fn focused_terminal_cursor(_app_state: &AppState) -> Option<CursorState> {
+    // Option A: cursor is painted in the cell by `pane/terminal.rs` render()
+    // via `Modifier::REVERSED`, NOT propagated through the cursor protocol.
+    // Returning None makes the OUTER terminal emit `?25l` so its hardware
+    // cursor stays hidden — the visible cursor block in the focused pane is
+    // entirely produced by the cell-level reverse-video style.
+    //
+    // Trade-off: macOS IMEs on terminals like Warp lose cursor tracking for
+    // focused-pane input (`NSTextInputClient` typically requires `?25h`).
+    // Rename overlay IME tracking is preserved through a separate path:
+    // `dialogs.rs` calls `frame.set_cursor_position`, which surfaces via
+    // `terminal.backend().rendered_cursor()` in the `or_else` fallback at the
+    // call site (line 256). That fallback fires whenever this function
+    // returns None — exactly the case during rename overlay since the pane
+    // is not in `Mode::Terminal` at that moment.
+    None
 }

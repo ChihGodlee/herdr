@@ -793,16 +793,31 @@ impl GhosttyPaneTerminal {
             }
         }
 
-        // Forward cursor position whenever the pane is the focused interactive
-        // target, even if the pane app hid the native cursor (e.g. Claude Code /
-        // pi / codex which hide cursor and paint a reversed-cell prompt). The
-        // OS-level IME candidate window needs the position regardless of the
-        // visibility flag. Trade-off: programs that hide cursor without painting
-        // their own will show an extra block cursor in the outer terminal.
+        // Option A: paint the cursor as a cell modification (Modifier::REVERSED)
+        // when the focused pane app wants the cursor visible, instead of
+        // forwarding the cursor position to the OUTER terminal via
+        // frame.set_cursor_position. The OUTER terminal's hardware cursor is
+        // suppressed by `focused_terminal_cursor` returning None — this makes
+        // herdr emit `?25l` and the OUTER cursor stays hidden regardless of
+        // the inner app's `?25h`/`?25l`.
+        //
+        // Trade-off: macOS IMEs on terminals like Warp will not track cursor
+        // position for focused panes (NSTextInputClient typically requires
+        // `?25h` to provide a candidate-window rect). Rename overlay still
+        // sets cursor through `dialogs.rs` which goes through ratatui Frame's
+        // own cursor pipeline (not this path), so IME tracking for rename
+        // input is preserved.
+        //
+        // Visual: cursor block looks identical across Warp / iTerm2 / Apple
+        // Terminal / Ghostty.app since herdr controls the rendering at cell
+        // level, not relying on each terminal's hardware-cursor styling.
         if show_cursor {
             if let Ok(Some(cursor)) = render_state.cursor_viewport() {
-                if cursor.x < area.width && cursor.y < area.height {
-                    frame.set_cursor_position((area.x + cursor.x, area.y + cursor.y));
+                let visible = render_state.cursor_visible().unwrap_or(false);
+                if visible && cursor.x < area.width && cursor.y < area.height {
+                    let buf = frame.buffer_mut();
+                    let cell = &mut buf[(area.x + cursor.x, area.y + cursor.y)];
+                    cell.modifier.insert(ratatui::style::Modifier::REVERSED);
                 }
             }
         }
@@ -1371,7 +1386,10 @@ mod tests {
     }
 
     #[test]
-    fn ghostty_render_can_suppress_cursor_position() {
+    fn ghostty_render_paints_cursor_only_for_focused_pane() {
+        // Option A: cursor is painted as a REVERSED cell at the focused pane's
+        // cursor position. Unfocused panes (show_cursor=false) leave the cell
+        // unchanged. Frame.cursor is never set — OUTER terminal sees `?25l`.
         let (tx, _rx) = mpsc::channel(4);
         let mut first_terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
         first_terminal.write(b"left");
@@ -1390,7 +1408,23 @@ mod tests {
             })
             .unwrap();
 
-        terminal.backend_mut().assert_cursor_position((4, 0));
+        // Frame.cursor is not set — Option A doesn't forward cursor position
+        // to the OUTER terminal at all (relies on cell-level painting instead).
+        let buf = terminal.backend().buffer();
+        let focused_cursor_cell = &buf[(4, 0)];
+        assert!(
+            focused_cursor_cell
+                .modifier
+                .contains(ratatui::style::Modifier::REVERSED),
+            "focused pane's cursor cell at (4, 0) must be REVERSED-painted"
+        );
+        let unfocused_cursor_cell = &buf[(21, 1)];
+        assert!(
+            !unfocused_cursor_cell
+                .modifier
+                .contains(ratatui::style::Modifier::REVERSED),
+            "unfocused pane's cursor cell at (21, 1) must NOT be REVERSED-painted"
+        );
     }
 
     #[test]

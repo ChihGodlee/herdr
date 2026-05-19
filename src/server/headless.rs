@@ -2503,12 +2503,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn virtual_render_does_not_propagate_focused_pane_cursor_under_option_a() {
-        // Option A: cursor is painted as a REVERSED cell at the focused
-        // pane's cursor position; the cursor protocol is suppressed so the
-        // OUTER terminal emits ?25l. virtual_render returns None for the
-        // protocol cursor regardless of whether the inner app requested
-        // ?25h or ?25l.
+    async fn virtual_render_forces_focused_pane_cursor_visible_under_v23f() {
+        // v23f: focused_terminal_cursor forces visible=true regardless of
+        // the inner app's ?25l/?25h, so the OUTER terminal sees ?25h+CUP
+        // and macOS IMEs keep tracking the cursor. The cursor visualization
+        // in the pane is ALSO produced by REVERSED cell painting in
+        // pane/terminal.rs render (Option A) — this test verifies the
+        // protocol path; pane_terminal tests verify the cell paint.
         let mut state = AppState::test_new();
         let mut ws = crate::workspace::Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
@@ -2525,14 +2526,32 @@ mod tests {
         let area = Rect::new(0, 0, 80, 24);
         let (_buffer, cursor) =
             crate::server::render_stream::render_virtual(&mut state, area, true);
+        let pane = state
+            .view
+            .pane_infos
+            .iter()
+            .find(|info| info.id == pane_id)
+            .expect("focused pane info");
 
-        assert_eq!(cursor, None);
+        assert_eq!(
+            cursor,
+            Some(CursorState {
+                x: pane.inner_rect.x + 4,
+                y: pane.inner_rect.y,
+                visible: true,
+                shape: cursor.as_ref().map(|c| c.shape).unwrap_or(0),
+            })
+        );
     }
 
     #[tokio::test]
-    async fn virtual_render_does_not_propagate_hidden_focused_pane_cursor_under_option_a() {
-        // Option A: same as the visible case — protocol cursor is None.
-        // The pane painted REVERSED in the cell only when cursor.visible.
+    async fn virtual_render_forces_visible_even_when_inner_hides_cursor_under_v23f() {
+        // v23f: even when the inner app emits ?25l, focused_terminal_cursor
+        // upgrades visible to true so the IME keeps tracking. The REVERSED
+        // cell painting (in pane/terminal.rs render) only happens when the
+        // inner app's cursor IS visible, so when ?25l is active there's no
+        // REVERSED cell — but the protocol cursor is still propagated as
+        // visible to keep IME working.
         let mut state = AppState::test_new();
         let mut ws = crate::workspace::Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
@@ -2549,17 +2568,32 @@ mod tests {
         let area = Rect::new(0, 0, 80, 24);
         let (_buffer, cursor) =
             crate::server::render_stream::render_virtual(&mut state, area, true);
+        let pane = state
+            .view
+            .pane_infos
+            .iter()
+            .find(|info| info.id == pane_id)
+            .expect("focused pane info");
 
-        assert_eq!(cursor, None);
+        assert_eq!(
+            cursor,
+            Some(CursorState {
+                x: pane.inner_rect.x + 4,
+                y: pane.inner_rect.y,
+                visible: true,
+                shape: cursor.as_ref().map(|c| c.shape).unwrap_or(0),
+            }),
+            "v23f: focused_terminal_cursor forces visible=true regardless of ?25l \
+             so the OUTER terminal's NSTextInputClient keeps providing IME rect."
+        );
     }
 
     #[tokio::test]
-    async fn virtual_render_ignores_track_ime_config_under_option_a() {
-        // Option A: track_ime_cursor_in_panes is now effectively dead code at
-        // the protocol layer — focused_terminal_cursor returns None
-        // regardless of the flag. (The config field is preserved for
+    async fn virtual_render_track_ime_config_is_redundant_under_v23f() {
+        // v23f: track_ime_cursor_in_panes is now redundant — visible=true is
+        // forced regardless of the flag. The config field is preserved for
         // backward-compat with existing user configs but does not influence
-        // pane cursor propagation.)
+        // pane cursor propagation under v23f.
         let mut state = AppState::test_new();
         let mut ws = crate::workspace::Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
@@ -2577,11 +2611,23 @@ mod tests {
         let area = Rect::new(0, 0, 80, 24);
         let (_buffer, cursor) =
             crate::server::render_stream::render_virtual(&mut state, area, true);
+        let pane = state
+            .view
+            .pane_infos
+            .iter()
+            .find(|info| info.id == pane_id)
+            .expect("focused pane info");
 
         assert_eq!(
-            cursor, None,
-            "Option A suppresses the focused pane's protocol cursor regardless of \
-             track_ime_cursor_in_panes — IME tracking trade-off is documented."
+            cursor,
+            Some(CursorState {
+                x: pane.inner_rect.x + 4,
+                y: pane.inner_rect.y,
+                visible: true,
+                shape: cursor.as_ref().map(|c| c.shape).unwrap_or(0),
+            }),
+            "v23f forces visible=true regardless of track_ime_cursor_in_panes — \
+             that flag is now redundant."
         );
     }
 

@@ -310,20 +310,37 @@ pub(crate) fn visible_hyperlinks(app_state: &AppState) -> Vec<((u16, u16), Strin
     links
 }
 
-fn focused_terminal_cursor(_app_state: &AppState) -> Option<CursorState> {
-    // Option A: cursor is painted in the cell by `pane/terminal.rs` render()
-    // via `Modifier::REVERSED`, NOT propagated through the cursor protocol.
-    // Returning None makes the OUTER terminal emit `?25l` so its hardware
-    // cursor stays hidden — the visible cursor block in the focused pane is
-    // entirely produced by the cell-level reverse-video style.
+fn focused_terminal_cursor(app_state: &AppState) -> Option<CursorState> {
+    // v23f: combine Option A's cell-level cursor painting (REVERSED modifier
+    // in `pane/terminal.rs` render) with a forced `visible: true` here so
+    // the OUTER terminal sees `?25h` + CUP and macOS IMEs keep tracking the
+    // cursor for the focused pane.
     //
-    // Trade-off: macOS IMEs on terminals like Warp lose cursor tracking for
-    // focused-pane input (`NSTextInputClient` typically requires `?25h`).
-    // Rename overlay IME tracking is preserved through a separate path:
-    // `dialogs.rs` calls `frame.set_cursor_position`, which surfaces via
-    // `terminal.backend().rendered_cursor()` in the `or_else` fallback at the
-    // call site (line 256). That fallback fires whenever this function
-    // returns None — exactly the case during rename overlay since the pane
-    // is not in `Mode::Terminal` at that moment.
-    None
+    // The cursor visualization in the pane comes from the REVERSED cell.
+    // The OUTER terminal's hardware cursor still draws on top (because of
+    // `?25h`) — final visual is the overlay of both. Rendering depends on
+    // OUTER's cursor algorithm (block / inverted-cell / colored-overlay).
+    if app_state.mode != Mode::Terminal {
+        return None;
+    }
+
+    let ws_idx = app_state.active?;
+    let info = app_state
+        .view
+        .pane_infos
+        .iter()
+        .find(|info| info.is_focused)?;
+    let rt = app_state.runtime_for_pane_in_workspace(ws_idx, info.id)?;
+    let cursor = rt.cursor_state(info.inner_rect, true)?;
+    if crate::ui::pane_is_scrolled_back(rt) {
+        // Cursor is off-screen due to scrollback — don't propagate
+        return None;
+    }
+
+    Some(CursorState {
+        x: cursor.x,
+        y: cursor.y,
+        visible: true,
+        shape: cursor.shape,
+    })
 }

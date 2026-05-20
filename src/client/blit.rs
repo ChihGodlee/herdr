@@ -953,6 +953,7 @@ mod tests {
         };
         let mut last_visible_cursor = None;
         let mut last_cursor_shape = 0;
+        let mut last_mouse_pointer_shape = MousePointerShape::Default;
         let mut output = Vec::new();
 
         blit_frame_to_with_cursor_memory(
@@ -961,6 +962,7 @@ mod tests {
             None,
             &mut last_visible_cursor,
             &mut last_cursor_shape,
+            &mut last_mouse_pointer_shape,
         );
         output.clear();
         blit_frame_to_with_cursor_memory(
@@ -969,6 +971,7 @@ mod tests {
             Some(&visible),
             &mut last_visible_cursor,
             &mut last_cursor_shape,
+            &mut last_mouse_pointer_shape,
         );
 
         let output_str = String::from_utf8(output).unwrap();
@@ -1298,6 +1301,7 @@ mod tests {
         };
         let mut last_visible_cursor = None;
         let mut last_cursor_shape = 0;
+        let mut last_mouse_pointer_shape = MousePointerShape::Default;
         let mut output = Vec::new();
 
         blit_frame_to_with_cursor_memory(
@@ -1306,6 +1310,7 @@ mod tests {
             None,
             &mut last_visible_cursor,
             &mut last_cursor_shape,
+            &mut last_mouse_pointer_shape,
         );
         output.clear();
         blit_frame_to_with_cursor_memory(
@@ -1314,6 +1319,7 @@ mod tests {
             Some(&visible),
             &mut last_visible_cursor,
             &mut last_cursor_shape,
+            &mut last_mouse_pointer_shape,
         );
 
         let output_str = String::from_utf8(output).unwrap();
@@ -1339,6 +1345,7 @@ mod tests {
         };
         let mut last_visible_cursor = None;
         let mut last_cursor_shape = 0;
+        let mut last_mouse_pointer_shape = MousePointerShape::Default;
         let mut output = Vec::new();
 
         blit_frame_to_with_cursor_memory(
@@ -1347,6 +1354,7 @@ mod tests {
             None,
             &mut last_visible_cursor,
             &mut last_cursor_shape,
+            &mut last_mouse_pointer_shape,
         );
 
         let output_str = String::from_utf8(output).unwrap();

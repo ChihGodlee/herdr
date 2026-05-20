@@ -792,6 +792,7 @@ mod tests {
             }),
             hyperlinks: vec!["https://example.com".to_owned()],
             graphics: Vec::new(),
+            mouse_pointer_shape: crate::cursor_shape::MousePointerShape::Default,
         };
         let msg = ServerMessage::Frame(frame.clone());
         let encoded = bincode::serde::encode_to_vec(&msg, bincode::config::standard()).unwrap();
@@ -943,6 +944,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: crate::cursor_shape::MousePointerShape::Default,
         };
         let msg = ServerMessage::Frame(frame);
 
@@ -1284,6 +1286,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: crate::cursor_shape::MousePointerShape::Default,
         };
         assert!(frame.to_ratatui_buffer().is_none());
     }

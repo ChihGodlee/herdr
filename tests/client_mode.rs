@@ -267,7 +267,7 @@ fn client_connects_and_receives_frame() {
     // Connect and handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9, "server should report protocol version 9");
     assert!(
         error.is_none(),
@@ -335,7 +335,7 @@ fn client_sees_headless_startup_config_diagnostic() {
 
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 
@@ -384,7 +384,7 @@ fn client_input_forwarded_to_pane() {
     // Connect and handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 
@@ -438,7 +438,7 @@ fn client_resize_sends_message() {
     // Connect and handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 
@@ -497,7 +497,7 @@ fn server_shutdown_sends_message_to_client() {
     // Connect and handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 
@@ -725,7 +725,7 @@ fn client_receives_frame_after_pane_output() {
     // Connect and handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 
@@ -772,7 +772,7 @@ fn navigate_mode_keybind_dispatch_in_server() {
     // Connect and handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 
@@ -890,7 +890,7 @@ fn graceful_shutdown_sends_server_shutdown_to_client() {
     // Connect and handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 
@@ -988,7 +988,7 @@ fn client_receives_notify_on_agent_state_change() {
     // Connect as a client and perform handshake.
     let mut stream = UnixStream::connect(&client_socket).expect("should connect");
     let (version, error) =
-        client_handshake(&mut stream, 8, 80, 24).expect("handshake should succeed");
+        client_handshake(&mut stream, 9, 80, 24).expect("handshake should succeed");
     assert_eq!(version, 9);
     assert!(error.is_none(), "{:?}", error);
 

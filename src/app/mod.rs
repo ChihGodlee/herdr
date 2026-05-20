@@ -599,17 +599,14 @@ impl App {
                 // position (resize, mode switch, workspace open all change
                 // what the cursor is over).
                 self.state.recompute_mouse_pointer_shape_from_last_pos();
-                if self.state.pending_mouse_pointer_shape
-                    != self.last_emitted_mouse_pointer_shape
-                {
+                if self.state.pending_mouse_pointer_shape != self.last_emitted_mouse_pointer_shape {
                     let in_tmux = std::env::var_os("TMUX").is_some();
                     let _ = crate::cursor_shape::emit_pointer_shape(
                         &mut io::stdout(),
                         self.state.pending_mouse_pointer_shape,
                         in_tmux,
                     );
-                    self.last_emitted_mouse_pointer_shape =
-                        self.state.pending_mouse_pointer_shape;
+                    self.last_emitted_mouse_pointer_shape = self.state.pending_mouse_pointer_shape;
                 }
 
                 self.last_render_at = Some(now);
@@ -691,8 +688,7 @@ impl App {
                 crate::cursor_shape::MousePointerShape::Default,
                 in_tmux,
             );
-            self.last_emitted_mouse_pointer_shape =
-                crate::cursor_shape::MousePointerShape::Default;
+            self.last_emitted_mouse_pointer_shape = crate::cursor_shape::MousePointerShape::Default;
         }
         *active = desired;
         Ok(())

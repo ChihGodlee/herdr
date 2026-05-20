@@ -129,8 +129,7 @@ impl AppState {
         if self.workspace_at_row(row).is_some() {
             return MousePointerShape::Grab;
         }
-        if self.on_collapsed_sidebar_toggle(col, row)
-            || self.on_agent_panel_scope_toggle(col, row)
+        if self.on_collapsed_sidebar_toggle(col, row) || self.on_agent_panel_scope_toggle(col, row)
         {
             return MousePointerShape::Pointer;
         }
@@ -142,7 +141,11 @@ impl AppState {
         let launcher_enabled = !self.sidebar_collapsed
             && matches!(
                 self.mode,
-                Mode::Terminal | Mode::Navigate | Mode::Resize | Mode::GlobalMenu | Mode::KeybindHelp
+                Mode::Terminal
+                    | Mode::Navigate
+                    | Mode::Resize
+                    | Mode::GlobalMenu
+                    | Mode::KeybindHelp
             );
         if launcher_enabled && in_rect(self.global_launcher_rect(), col, row) {
             return MousePointerShape::Pointer;
@@ -196,11 +199,8 @@ mod tests {
         app.state.mouse_pointer_shapes_enabled = false;
         // Mock a sidebar divider hit by setting last_mouse_pos to the divider edge.
         let divider_col = app.state.view.sidebar_rect.x + app.state.view.sidebar_rect.width - 1;
-        app.state.recompute_mouse_pointer_shape(mouse(
-            MouseEventKind::Moved,
-            divider_col,
-            5,
-        ));
+        app.state
+            .recompute_mouse_pointer_shape(mouse(MouseEventKind::Moved, divider_col, 5));
         assert_eq!(
             app.state.pending_mouse_pointer_shape,
             MousePointerShape::Default
@@ -212,11 +212,8 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.mouse_pointer_shapes_enabled = true;
         let divider_col = app.state.view.sidebar_rect.x + app.state.view.sidebar_rect.width - 1;
-        app.state.recompute_mouse_pointer_shape(mouse(
-            MouseEventKind::Moved,
-            divider_col,
-            5,
-        ));
+        app.state
+            .recompute_mouse_pointer_shape(mouse(MouseEventKind::Moved, divider_col, 5));
         assert_eq!(
             app.state.pending_mouse_pointer_shape,
             MousePointerShape::ColResize
@@ -251,8 +248,11 @@ mod tests {
                 area: Rect::new(0, 0, 80, 20),
             },
         });
-        app.state
-            .recompute_mouse_pointer_shape(mouse(MouseEventKind::Drag(MouseButton::Left), 0, 0));
+        app.state.recompute_mouse_pointer_shape(mouse(
+            MouseEventKind::Drag(MouseButton::Left),
+            0,
+            0,
+        ));
         assert_eq!(
             app.state.pending_mouse_pointer_shape,
             MousePointerShape::ColResize
@@ -270,8 +270,11 @@ mod tests {
                 insert_idx: None,
             },
         });
-        app.state
-            .recompute_mouse_pointer_shape(mouse(MouseEventKind::Drag(MouseButton::Left), 5, 5));
+        app.state.recompute_mouse_pointer_shape(mouse(
+            MouseEventKind::Drag(MouseButton::Left),
+            5,
+            5,
+        ));
         assert_eq!(
             app.state.pending_mouse_pointer_shape,
             MousePointerShape::Grabbing

@@ -1857,9 +1857,7 @@ impl HeadlessServer {
         // Refresh the cached pointer shape against the current view geometry
         // before any client frames are built. View geometry can have changed
         // since the last mouse event (resize, mode switch, workspace open).
-        self.app
-            .state
-            .recompute_mouse_pointer_shape_from_last_pos();
+        self.app.state.recompute_mouse_pointer_shape_from_last_pos();
 
         let foreground_client_id = self.foreground_client_id;
         let mut render_targets: Vec<RenderTarget> = self
@@ -1920,7 +1918,9 @@ impl HeadlessServer {
                     let hyperlinks =
                         crate::server::render_stream::visible_hyperlinks(&self.app.state);
                     let mut frame = FrameData::from_ratatui_buffer_with_hyperlinks(
-                        &buffer, cursor, &hyperlinks,
+                        &buffer,
+                        cursor,
+                        &hyperlinks,
                     );
                     // Direct attach mode (other arm below) keeps Default — no
                     // herdr UI is visible there. Only App clients get the

@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Current protocol version. Bumped when wire format changes incompatibly.
-pub const PROTOCOL_VERSION: u32 = 8;
+///
+/// v9: Added `FrameData::mouse_pointer_shape` for OSC 22 pointer shape over
+///     draggable UI regions (experimental).
+pub const PROTOCOL_VERSION: u32 = 9;
 
 /// Maximum allowed frame payload size (2 MB). Frames larger than this are
 /// rejected to prevent denial-of-service via oversized length prefixes.
@@ -158,6 +161,12 @@ pub struct FrameData {
     pub hyperlinks: Vec<String>,
     /// Kitty graphics protocol bytes to apply after the text frame.
     pub graphics: Vec<u8>,
+    /// OS mouse pointer shape the client should request via OSC 22 for this
+    /// frame. `Default` is the empty-payload reset and is applied whenever
+    /// the cursor is over a non-draggable region or the experimental flag is
+    /// off. `#[serde(default)]` keeps wire compatibility with v8 fixtures.
+    #[serde(default)]
+    pub mouse_pointer_shape: crate::cursor_shape::MousePointerShape,
 }
 
 impl FrameData {
@@ -223,6 +232,7 @@ impl FrameData {
             cursor,
             hyperlinks: hyperlink_uris,
             graphics: Vec::new(),
+            mouse_pointer_shape: crate::cursor_shape::MousePointerShape::Default,
         }
     }
 

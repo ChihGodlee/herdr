@@ -283,7 +283,7 @@ impl AppState {
             .unwrap_or(0)
     }
 
-    fn release_notes_scrollbar_target_at(
+    pub(super) fn release_notes_scrollbar_target_at(
         &self,
         col: u16,
         row: u16,
@@ -385,7 +385,7 @@ impl AppState {
             .unwrap_or(0)
     }
 
-    fn product_announcement_scrollbar_target_at(
+    pub(super) fn product_announcement_scrollbar_target_at(
         &self,
         col: u16,
         row: u16,
@@ -499,7 +499,7 @@ impl AppState {
         })
     }
 
-    fn keybind_help_scrollbar_target_at(&self, col: u16, row: u16) -> Option<ScrollbarClickTarget> {
+    pub(super) fn keybind_help_scrollbar_target_at(&self, col: u16, row: u16) -> Option<ScrollbarClickTarget> {
         let body = self.keybind_help_body_rect()?;
         let metrics = self.keybind_help_scroll_metrics()?;
         let track = crate::ui::release_notes_scrollbar_rect(body, metrics)?;

@@ -261,15 +261,38 @@ struct TerminalGuard {
 fn write_terminal_restore_postlude(writer: &mut impl io::Write) -> io::Result<()> {
     // Restore a visible cursor and reset DECSCUSR back to the terminal default.
     writer.write_all(b"\x1b[?25h\x1b[0 q")?;
+    // Reset OS mouse pointer shape (OSC 22 with empty payload). Must be sent
+    // unconditionally on shutdown — kitty/wezterm will otherwise leave the
+    // pointer stuck on whatever shape we last requested (WezTerm bug #4086).
+    // tmux passthrough wrapping is applied so the sequence reaches the outer
+    // terminal when herdr ran inside tmux.
+    let in_tmux = std::env::var_os("TMUX").is_some();
+    let bytes = crate::cursor_shape::osc22_bytes_for(
+        crate::cursor_shape::MousePointerShape::Default,
+        in_tmux,
+    );
+    writer.write_all(&bytes)?;
     writer.flush()
 }
 
 fn set_mouse_capture(enabled: bool) -> io::Result<()> {
-    if enabled {
+    let result = if enabled {
         execute!(io::stdout(), EnableMouseCapture)
     } else {
         execute!(io::stdout(), DisableMouseCapture)
+    };
+    if !enabled {
+        // Mouse capture is off — herdr is no longer reading hover events, so
+        // any draggable-region pointer shape we requested is now stale. Reset
+        // to the terminal default.
+        let in_tmux = std::env::var_os("TMUX").is_some();
+        let _ = crate::cursor_shape::emit_pointer_shape(
+            &mut io::stdout(),
+            crate::cursor_shape::MousePointerShape::Default,
+            in_tmux,
+        );
     }
+    result
 }
 
 fn restore_terminal_state(reset_modify_other_keys: bool) {
@@ -733,6 +756,11 @@ async fn run_client_loop(
                     if desired != state.mouse_capture_active {
                         set_mouse_capture(desired).map_err(ClientError::ConnectionFailed)?;
                         state.mouse_capture_active = desired;
+                        // After capture toggles, force the next frame to
+                        // re-emit OSC 22 so we either restore the right shape
+                        // (capture re-enabled) or push a Default reset that
+                        // matches the cached shape (capture disabled).
+                        state.blit_encoder.force_pointer_shape_reset();
                     }
                 }
                 ServerMessage::Welcome { .. } => {
@@ -1184,7 +1212,20 @@ mod tests {
     fn terminal_restore_postlude_restores_visible_default_cursor() {
         let mut output = Vec::new();
         write_terminal_restore_postlude(&mut output).unwrap();
-        assert_eq!(output, b"\x1b[?25h\x1b[0 q");
+        // Restored: cursor visible + DECSCUSR default + OSC 22 pointer reset.
+        // The OSC 22 reset payload depends on whether $TMUX is set in the
+        // test environment; assert on the prefix and presence of the OSC 22
+        // reset rather than the exact bytes.
+        assert!(
+            output.starts_with(b"\x1b[?25h\x1b[0 q"),
+            "postlude must start with cursor-visible + DECSCUSR default; got {output:?}"
+        );
+        // Outside tmux (typical test env), the suffix is the OSC 22 empty-payload
+        // reset. Inside tmux the suffix is DCS-wrapped — both forms contain `]22;`.
+        assert!(
+            output.windows(4).any(|w| w == b"]22;"),
+            "postlude must contain an OSC 22 mouse-pointer reset; got {output:?}"
+        );
     }
 
     #[test]

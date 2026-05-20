@@ -88,6 +88,9 @@ pub struct App {
     pub(crate) full_redraw_pending: bool,
     pub(crate) overlay_panes: HashMap<crate::layout::PaneId, OverlayPaneState>,
     pub(crate) local_terminal_notifications: bool,
+    /// Last OSC 22 pointer shape emitted to stdout in monolithic mode. Used
+    /// to deduplicate so identical frames don't re-emit the sequence.
+    pub(crate) last_emitted_mouse_pointer_shape: crate::cursor_shape::MousePointerShape,
 }
 
 pub(crate) enum LoopEvent {
@@ -387,6 +390,8 @@ impl App {
             drag: None,
             workspace_press: None,
             tab_press: None,
+            last_mouse_pos: None,
+            pending_mouse_pointer_shape: crate::cursor_shape::MousePointerShape::Default,
             selection: None,
             selection_autoscroll: None,
             context_menu: None,
@@ -413,6 +418,7 @@ impl App {
             prompt_new_tab_name: config.ui.prompt_new_tab_name,
             show_agent_labels_on_pane_borders: config.ui.show_agent_labels_on_pane_borders,
             kitty_graphics_enabled: config.experimental.kitty_graphics,
+            mouse_pointer_shapes_enabled: config.experimental.mouse_pointer_shapes,
             default_shell: config.terminal.default_shell.clone(),
             pane_scrollback_limit_bytes: config.advanced.scrollback_limit_bytes,
             accent: crate::config::parse_color(&config.ui.accent),
@@ -496,6 +502,7 @@ impl App {
             full_redraw_pending: false,
             overlay_panes: HashMap::new(),
             local_terminal_notifications: true,
+            last_emitted_mouse_pointer_shape: crate::cursor_shape::MousePointerShape::Default,
         }
     }
 
@@ -586,6 +593,25 @@ impl App {
                 if kitty_graphics_enabled {
                     crate::kitty_graphics::paint_local_pane_graphics(&self.state, cell_size)?;
                 }
+
+                // After the frame has rendered with new view geometry,
+                // re-evaluate the pointer shape for the last known mouse
+                // position (resize, mode switch, workspace open all change
+                // what the cursor is over).
+                self.state.recompute_mouse_pointer_shape_from_last_pos();
+                if self.state.pending_mouse_pointer_shape
+                    != self.last_emitted_mouse_pointer_shape
+                {
+                    let in_tmux = std::env::var_os("TMUX").is_some();
+                    let _ = crate::cursor_shape::emit_pointer_shape(
+                        &mut io::stdout(),
+                        self.state.pending_mouse_pointer_shape,
+                        in_tmux,
+                    );
+                    self.last_emitted_mouse_pointer_shape =
+                        self.state.pending_mouse_pointer_shape;
+                }
+
                 self.last_render_at = Some(now);
                 needs_render = false;
                 continue;
@@ -647,7 +673,7 @@ impl App {
         Ok(())
     }
 
-    fn sync_host_mouse_capture(&self, active: &mut bool) -> io::Result<()> {
+    fn sync_host_mouse_capture(&mut self, active: &mut bool) -> io::Result<()> {
         let desired = self.state.should_capture_host_mouse();
         if desired == *active {
             return Ok(());
@@ -656,6 +682,17 @@ impl App {
             execute!(io::stdout(), EnableMouseCapture)?;
         } else {
             execute!(io::stdout(), DisableMouseCapture)?;
+            // Mouse capture disabled — herdr is no longer reading hover
+            // events. Reset the OS pointer shape to terminal default so the
+            // user doesn't see a stale `grab`/`col-resize` outside herdr's UI.
+            let in_tmux = std::env::var_os("TMUX").is_some();
+            let _ = crate::cursor_shape::emit_pointer_shape(
+                &mut io::stdout(),
+                crate::cursor_shape::MousePointerShape::Default,
+                in_tmux,
+            );
+            self.last_emitted_mouse_pointer_shape =
+                crate::cursor_shape::MousePointerShape::Default;
         }
         *active = desired;
         Ok(())
@@ -889,6 +926,15 @@ impl App {
             crate::kitty_graphics::set_enabled(config.experimental.kitty_graphics);
             if was_kitty_graphics_enabled && !config.experimental.kitty_graphics {
                 let _ = crate::kitty_graphics::clear_all_host_graphics();
+            }
+
+            let was_pointer_shapes = self.state.mouse_pointer_shapes_enabled;
+            self.state.mouse_pointer_shapes_enabled = config.experimental.mouse_pointer_shapes;
+            if was_pointer_shapes && !config.experimental.mouse_pointer_shapes {
+                // Just turned off — force the next render to push a Default
+                // reset so any active grab/resize cursor disappears.
+                self.state.pending_mouse_pointer_shape =
+                    crate::cursor_shape::MousePointerShape::Default;
             }
         }
 

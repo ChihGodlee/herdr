@@ -22,6 +22,7 @@ enum WheelRouting {
 const WORKSPACE_DRAG_THRESHOLD: u16 = 1;
 const TAB_DRAG_THRESHOLD: u16 = 1;
 
+mod cursor_shape;
 mod modal;
 mod mouse;
 mod navigate;
@@ -156,7 +157,13 @@ impl App {
     }
 
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) {
+        // Cache the latest mouse position so view-geometry changes (resize,
+        // mode switch, workspace open) can recompute the pointer shape
+        // without waiting for a fresh mouse event.
+        self.state.last_mouse_pos = Some((mouse.column, mouse.row));
+
         if self.handle_overlay_mouse(mouse) {
+            self.state.recompute_mouse_pointer_shape(mouse);
             return;
         }
 
@@ -222,6 +229,10 @@ impl App {
             self.selection_autoscroll_deadline =
                 Some(std::time::Instant::now() + super::SELECTION_AUTOSCROLL_INTERVAL);
         }
+
+        // Compute the desired pointer shape from the (now-final) drag state
+        // and cursor position. The renderer will publish it via OSC 22.
+        self.state.recompute_mouse_pointer_shape(mouse);
     }
 }
 

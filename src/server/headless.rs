@@ -1854,6 +1854,13 @@ impl HeadlessServer {
     /// Renders the current state to client-sized virtual buffers and streams
     /// frames to all connected clients.
     fn render_and_stream(&mut self) {
+        // Refresh the cached pointer shape against the current view geometry
+        // before any client frames are built. View geometry can have changed
+        // since the last mouse event (resize, mode switch, workspace open).
+        self.app
+            .state
+            .recompute_mouse_pointer_shape_from_last_pos();
+
         let foreground_client_id = self.foreground_client_id;
         let mut render_targets: Vec<RenderTarget> = self
             .clients
@@ -1912,7 +1919,14 @@ impl HeadlessServer {
                         };
                     let hyperlinks =
                         crate::server::render_stream::visible_hyperlinks(&self.app.state);
-                    FrameData::from_ratatui_buffer_with_hyperlinks(&buffer, cursor, &hyperlinks)
+                    let mut frame = FrameData::from_ratatui_buffer_with_hyperlinks(
+                        &buffer, cursor, &hyperlinks,
+                    );
+                    // Direct attach mode (other arm below) keeps Default — no
+                    // herdr UI is visible there. Only App clients get the
+                    // computed pointer shape.
+                    frame.mouse_pointer_shape = self.app.state.pending_mouse_pointer_shape;
+                    frame
                 }
                 ClientConnectionMode::TerminalAttach { terminal_id } => {
                     let Some(runtime) = self.runtime_for_terminal_id_string(&terminal_id) else {

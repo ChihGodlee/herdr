@@ -29,6 +29,7 @@ use std::io::Write;
 
 use unicode_width::UnicodeWidthStr;
 
+use crate::cursor_shape::MousePointerShape;
 use crate::server::protocol::{CellData, FrameData};
 
 /// Bytes produced by a [`BlitEncoder`] for one terminal frame.
@@ -39,6 +40,7 @@ pub(crate) struct EncodedBlit {
     pub(crate) full: bool,
     next_last_visible_cursor: Option<(u16, u16)>,
     next_last_cursor_shape: u8,
+    next_last_mouse_pointer_shape: MousePointerShape,
 }
 
 /// Stateful encoder that diffs semantic frames into terminal ANSI bytes.
@@ -47,6 +49,17 @@ pub(crate) struct BlitEncoder {
     last_frame: Option<FrameData>,
     last_visible_cursor: Option<(u16, u16)>,
     last_cursor_shape: u8,
+    last_mouse_pointer_shape: MousePointerShape,
+}
+
+impl BlitEncoder {
+    /// Force the next frame to re-emit the pointer-shape OSC 22 sequence even
+    /// if it matches the last emitted shape. Used after `set_mouse_capture(false)`
+    /// or `MouseCapture { enabled: false }` so the client emits a reset and
+    /// then re-emits when capture comes back.
+    pub(crate) fn force_pointer_shape_reset(&mut self) {
+        self.last_mouse_pointer_shape = MousePointerShape::Default;
+    }
 }
 
 impl BlitEncoder {
@@ -66,24 +79,28 @@ impl BlitEncoder {
         let mut bytes = Vec::new();
         let mut next_last_visible_cursor = self.last_visible_cursor;
         let mut next_last_cursor_shape = self.last_cursor_shape;
+        let mut next_last_mouse_pointer_shape = self.last_mouse_pointer_shape;
         blit_frame_to_with_cursor_memory(
             &mut bytes,
             frame,
             prev,
             &mut next_last_visible_cursor,
             &mut next_last_cursor_shape,
+            &mut next_last_mouse_pointer_shape,
         );
         EncodedBlit {
             bytes,
             full,
             next_last_visible_cursor,
             next_last_cursor_shape,
+            next_last_mouse_pointer_shape,
         }
     }
 
     pub(crate) fn commit(&mut self, frame: FrameData, encoded: EncodedBlit) {
         self.last_visible_cursor = encoded.next_last_visible_cursor;
         self.last_cursor_shape = encoded.next_last_cursor_shape;
+        self.last_mouse_pointer_shape = encoded.next_last_mouse_pointer_shape;
         self.last_frame = Some(frame);
     }
 
@@ -257,12 +274,14 @@ fn cells_equal(a: &CellData, b: &CellData) -> bool {
 fn blit_frame_to(writer: impl Write, frame: &FrameData, prev: Option<&FrameData>) {
     let mut last_visible_cursor = None;
     let mut last_cursor_shape = 0;
+    let mut last_mouse_pointer_shape = MousePointerShape::Default;
     blit_frame_to_with_cursor_memory(
         writer,
         frame,
         prev,
         &mut last_visible_cursor,
         &mut last_cursor_shape,
+        &mut last_mouse_pointer_shape,
     );
 }
 
@@ -272,6 +291,7 @@ fn blit_frame_to_with_cursor_memory(
     prev: Option<&FrameData>,
     last_visible_cursor: &mut Option<(u16, u16)>,
     last_cursor_shape: &mut u8,
+    last_mouse_pointer_shape: &mut MousePointerShape,
 ) {
     // On first frame or size change, do a full redraw.
     let full_redraw =
@@ -320,6 +340,16 @@ fn blit_frame_to_with_cursor_memory(
     // intermediate paint cursor positions remain hidden and the focused pane's
     // requested cursor visibility is preserved.
     write_ime_anchor_cursor_state(&mut writer, host_cursor);
+
+    // Publish the OS mouse pointer shape AFTER the sync-end so kitty/wezterm
+    // don't buffer the pointer change inside synchronized output (where some
+    // terminals appear to swallow OSC 22). Memoized — only emit on change.
+    write_mouse_pointer_shape(
+        &mut writer,
+        frame.mouse_pointer_shape,
+        last_mouse_pointer_shape,
+    );
+
     let _ = writer.flush();
 }
 
@@ -417,6 +447,20 @@ fn write_ime_anchor_cursor_state(writer: &mut impl Write, cursor: HostCursorStat
     } else {
         let _ = writer.write_all(b"\x1b[?25l");
     }
+}
+
+fn write_mouse_pointer_shape(
+    writer: &mut impl Write,
+    requested: MousePointerShape,
+    last_shape: &mut MousePointerShape,
+) {
+    if requested == *last_shape {
+        return;
+    }
+    let in_tmux = std::env::var_os("TMUX").is_some();
+    let bytes = crate::cursor_shape::osc22_bytes_for(requested, in_tmux);
+    let _ = writer.write_all(&bytes);
+    *last_shape = requested;
 }
 
 fn write_all_cells(writer: &mut impl Write, frame: &FrameData) {
@@ -635,6 +679,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         }
     }
 
@@ -821,6 +866,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -851,6 +897,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -888,6 +935,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let hidden = FrameData {
             cells: vec![make_cell("B", 0, 0, 0); 9],
@@ -901,6 +949,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let mut last_visible_cursor = None;
         let mut last_cursor_shape = 0;
@@ -1065,6 +1114,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1091,6 +1141,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1112,6 +1163,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1139,6 +1191,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1161,6 +1214,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1190,6 +1244,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let mut curr = prev.clone();
         curr.cells[0] = make_cell("B", 0, 0, 0);
@@ -1230,6 +1285,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let hidden = FrameData {
             cells: vec![make_cell("B", 0, 0, 0); 9],
@@ -1238,6 +1294,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let mut last_visible_cursor = None;
         let mut last_cursor_shape = 0;
@@ -1278,6 +1335,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let mut last_visible_cursor = None;
         let mut last_cursor_shape = 0;
@@ -1312,6 +1370,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let curr = FrameData {
             cells: vec![make_cell("B", 0, 0, 0)],
@@ -1320,6 +1379,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1344,6 +1404,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1368,6 +1429,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let curr = FrameData {
             cells: vec![
@@ -1380,6 +1442,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1406,6 +1469,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
         let curr = FrameData {
             cells: vec![
@@ -1418,6 +1482,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            mouse_pointer_shape: MousePointerShape::Default,
         };
 
         let mut output = Vec::new();
@@ -1426,5 +1491,98 @@ mod tests {
 
         assert!(output_str.contains("\x1b[1;1H"));
         assert!(!output_str.contains("\x1b[1;2H"));
+    }
+
+    // -----------------------------------------------------------------------
+    // OSC 22 mouse pointer shape
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn first_frame_with_grab_emits_osc22_after_sync_end() {
+        let mut frame = make_frame(2, 1, vec![make_cell("A", 0, 0, 0); 2]);
+        frame.mouse_pointer_shape = MousePointerShape::Grab;
+
+        let mut output = Vec::new();
+        blit_frame_to(&mut output, &frame, None);
+        let output_str = String::from_utf8(output).unwrap();
+
+        // OSC 22 must come after `\x1b[?2026l` (sync-end).
+        let sync_end_pos = output_str
+            .find("\x1b[?2026l")
+            .expect("sync-end must be emitted");
+        let osc22_pos = output_str
+            .find("\x1b]22;grab\x1b\\")
+            .expect("OSC 22 grab payload must be emitted");
+        assert!(
+            osc22_pos > sync_end_pos,
+            "OSC 22 must follow the sync-end so kitty/wezterm don't buffer it"
+        );
+    }
+
+    #[test]
+    fn pointer_shape_memoized_so_unchanged_frames_dont_reemit() {
+        let mut encoder = BlitEncoder::new();
+        let mut frame = make_frame(2, 1, vec![make_cell("A", 0, 0, 0); 2]);
+        frame.mouse_pointer_shape = MousePointerShape::Grab;
+
+        let encoded1 = encoder.encode(&frame, false);
+        encoder.commit(frame.clone(), encoded1);
+
+        let encoded2 = encoder.encode(&frame, false);
+        let bytes_str = String::from_utf8(encoded2.bytes).unwrap();
+        assert!(
+            !bytes_str.contains("\x1b]22;"),
+            "second identical frame must not re-emit OSC 22"
+        );
+    }
+
+    #[test]
+    fn pointer_shape_change_to_default_emits_empty_payload_reset() {
+        let mut encoder = BlitEncoder::new();
+        let mut frame_grab = make_frame(2, 1, vec![make_cell("A", 0, 0, 0); 2]);
+        frame_grab.mouse_pointer_shape = MousePointerShape::Grab;
+
+        let encoded1 = encoder.encode(&frame_grab, false);
+        encoder.commit(frame_grab, encoded1);
+
+        let frame_default = make_frame(2, 1, vec![make_cell("A", 0, 0, 0); 2]);
+        let encoded2 = encoder.encode(&frame_default, false);
+        let bytes_str = String::from_utf8(encoded2.bytes).unwrap();
+        assert!(
+            bytes_str.contains("\x1b]22;\x1b\\"),
+            "transitioning to Default must emit the empty-payload reset; got {bytes_str:?}"
+        );
+    }
+
+    #[test]
+    fn pointer_shape_col_resize_emits_w3c_name() {
+        let mut frame = make_frame(2, 1, vec![make_cell("A", 0, 0, 0); 2]);
+        frame.mouse_pointer_shape = MousePointerShape::ColResize;
+
+        let mut output = Vec::new();
+        blit_frame_to(&mut output, &frame, None);
+        let output_str = String::from_utf8(output).unwrap();
+
+        assert!(output_str.contains("\x1b]22;col-resize\x1b\\"));
+    }
+
+    #[test]
+    fn force_pointer_shape_reset_causes_re_emission_next_frame() {
+        let mut encoder = BlitEncoder::new();
+        let mut frame = make_frame(2, 1, vec![make_cell("A", 0, 0, 0); 2]);
+        frame.mouse_pointer_shape = MousePointerShape::Grab;
+
+        let encoded1 = encoder.encode(&frame, false);
+        encoder.commit(frame.clone(), encoded1);
+
+        encoder.force_pointer_shape_reset();
+        // After force_reset, the encoder thinks last shape is Default — so a
+        // frame with Grab should re-emit OSC 22 grab.
+        let encoded2 = encoder.encode(&frame, false);
+        let bytes_str = String::from_utf8(encoded2.bytes).unwrap();
+        assert!(
+            bytes_str.contains("\x1b]22;grab\x1b\\"),
+            "force_pointer_shape_reset must cause next encode to re-emit; got {bytes_str:?}"
+        );
     }
 }

@@ -1041,7 +1041,7 @@ impl AppState {
         }
     }
 
-    fn clickable_toast_at(&self, col: u16, row: u16) -> bool {
+    pub(super) fn clickable_toast_at(&self, col: u16, row: u16) -> bool {
         self.toast
             .as_ref()
             .is_some_and(|toast| toast.target.is_some())

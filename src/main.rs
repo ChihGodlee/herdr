@@ -23,6 +23,7 @@ mod app;
 mod cli;
 mod client;
 mod config;
+mod cursor_shape;
 mod detect;
 mod events;
 mod ghostty;
@@ -540,6 +541,18 @@ fn main() -> io::Result<()> {
 
         if crate::kitty_graphics::is_enabled() {
             crate::kitty_graphics::clear_all_host_graphics()?;
+        }
+        // Reset the OS mouse pointer shape before tearing down so the host
+        // terminal doesn't keep showing a grab/col-resize cursor we requested.
+        // Mitigates WezTerm bug #4086 (stuck cursor after app exit). Sent
+        // unconditionally — terminals that don't speak OSC 22 silently drop it.
+        {
+            let in_tmux = std::env::var_os("TMUX").is_some();
+            let _ = crate::cursor_shape::emit_pointer_shape(
+                &mut io::stdout(),
+                crate::cursor_shape::MousePointerShape::Default,
+                in_tmux,
+            );
         }
         execute!(
             io::stdout(),

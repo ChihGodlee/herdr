@@ -206,6 +206,11 @@ pub struct ExperimentalConfig {
     pub allow_nested: bool,
     /// Experimental local Kitty graphics rendering for attached clients. Default: false.
     pub kitty_graphics: bool,
+    /// Emit OSC 22 to change the OS mouse pointer shape over draggable UI
+    /// regions (pane splitters, sidebar dividers, scrollbar thumbs, tabs,
+    /// workspace cards). Supported on Kitty, WezTerm, Ghostty, xterm; silently
+    /// ignored on other terminals. Default: false.
+    pub mouse_pointer_shapes: bool,
 }
 
 impl Default for KeysConfig {
@@ -487,6 +492,19 @@ kitty_graphics = true
         let config: Config = toml::from_str(toml).unwrap();
         assert!(config.experimental.allow_nested);
         assert!(config.experimental.kitty_graphics);
+    }
+
+    #[test]
+    fn mouse_pointer_shapes_default_off_and_parse() {
+        let config = Config::default();
+        assert!(!config.experimental.mouse_pointer_shapes);
+
+        let toml = r#"
+[experimental]
+mouse_pointer_shapes = true
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.experimental.mouse_pointer_shapes);
     }
 
     #[test]

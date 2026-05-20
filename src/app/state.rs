@@ -932,6 +932,12 @@ pub struct AppState {
     pub(crate) drag: Option<DragState>,
     pub(crate) workspace_press: Option<WorkspacePressState>,
     pub(crate) tab_press: Option<TabPressState>,
+    /// Last reported mouse position. Used to recompute pointer shape when
+    /// view geometry changes (resize, mode switch) without a fresh mouse event.
+    pub(crate) last_mouse_pos: Option<(u16, u16)>,
+    /// Pointer shape the renderer should publish to the host terminal in the
+    /// next frame, derived from hit-tests on the last mouse position.
+    pub(crate) pending_mouse_pointer_shape: crate::cursor_shape::MousePointerShape,
     pub selection: Option<Selection>,
     pub selection_autoscroll: Option<SelectionAutoscroll>,
     pub context_menu: Option<ContextMenuState>,
@@ -965,6 +971,9 @@ pub struct AppState {
     pub prompt_new_tab_name: bool,
     pub show_agent_labels_on_pane_borders: bool,
     pub kitty_graphics_enabled: bool,
+    /// Emit OSC 22 to change the OS mouse pointer shape over draggable UI
+    /// regions. Sourced from `experimental.mouse_pointer_shapes` config.
+    pub mouse_pointer_shapes_enabled: bool,
     pub default_shell: String,
     pub pane_scrollback_limit_bytes: usize,
     #[allow(dead_code)] // kept for backward compat; palette.accent is the source of truth
@@ -1186,6 +1195,8 @@ impl AppState {
             drag: None,
             workspace_press: None,
             tab_press: None,
+            last_mouse_pos: None,
+            pending_mouse_pointer_shape: crate::cursor_shape::MousePointerShape::Default,
             selection: None,
             selection_autoscroll: None,
             context_menu: None,
@@ -1212,6 +1223,7 @@ impl AppState {
             prompt_new_tab_name: true,
             show_agent_labels_on_pane_borders: false,
             kitty_graphics_enabled: false,
+            mouse_pointer_shapes_enabled: false,
             default_shell: String::new(),
             pane_scrollback_limit_bytes: crate::config::DEFAULT_SCROLLBACK_LIMIT_BYTES,
             accent: Color::Cyan,

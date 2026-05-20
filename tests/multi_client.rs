@@ -581,6 +581,7 @@ struct FrameWire {
     cursor: Option<CursorWire>,
     hyperlinks: Vec<String>,
     graphics: Vec<u8>,
+    mouse_pointer_shape: u32,
 }
 
 #[allow(dead_code)]

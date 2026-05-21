@@ -375,22 +375,17 @@ fn try_resume_spawn(
 }
 
 /// Quote a string for safe inclusion in a shell command via single quotes.
+/// Strings containing only safe characters are returned unquoted.
 fn shell_escape(s: &str) -> String {
-    if s.is_empty() {
-        return "''".to_string();
+    if !s.is_empty()
+        && s.chars().all(|ch| {
+            ch.is_ascii_alphanumeric()
+                || matches!(ch, '@' | '%' | '_' | '+' | '=' | ':' | ',' | '.' | '/' | '-')
+        })
+    {
+        return s.to_string();
     }
-    // Wrap in single quotes; escape any embedded single quotes.
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 pub(super) fn prune_restored_node(node: Node, surviving: &HashSet<PaneId>) -> Option<Node> {

@@ -49,11 +49,7 @@ if hook_input_file:
 
 # Codex hooks expose session/conversation identifiers under several possible
 # field names depending on the event. Try them in order.
-session_id = (
-    hook_input.get("session_id")
-    or hook_input.get("conversation_id")
-    or hook_input.get("session", {}).get("id") if isinstance(hook_input.get("session"), dict) else None
-)
+session_id = hook_input.get("session_id") or hook_input.get("conversation_id")
 if not session_id:
     sess = hook_input.get("session")
     if isinstance(sess, dict):

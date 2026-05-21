@@ -805,6 +805,7 @@ impl AppState {
                 seq,
                 session_id,
             } => {
+                let has_new_session_id = session_id.is_some();
                 let updates: Vec<_> = self
                     .update_terminal_state(pane_id, |terminal| {
                         if let Some(sid) = session_id.as_deref() {
@@ -821,7 +822,13 @@ impl AppState {
                     })
                     .into_iter()
                     .collect();
-                if !updates.is_empty() {
+                // Mark dirty when a new session_id arrived (always persistable)
+                // or when the agent identity changed.
+                if has_new_session_id
+                    || updates
+                        .iter()
+                        .any(|u| u.previous_known_agent != u.known_agent)
+                {
                     self.mark_session_dirty();
                 }
                 updates

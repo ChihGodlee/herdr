@@ -206,6 +206,11 @@ pub struct ExperimentalConfig {
     pub allow_nested: bool,
     /// Experimental local Kitty graphics rendering for attached clients. Default: false.
     pub kitty_graphics: bool,
+    /// When restoring a session, attempt to resume detected AI agents rather
+    /// than spawning a plain shell. Agents with known resume commands (claude,
+    /// droid) use their native resume mechanism; others replay the original
+    /// launch argv. Default: false.
+    pub resume_agents: bool,
 }
 
 impl Default for KeysConfig {

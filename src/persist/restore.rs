@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -13,15 +13,20 @@ use crate::pane::PaneState;
 use crate::terminal::{TerminalId, TerminalRuntime, TerminalState};
 use crate::workspace::Workspace;
 
-use super::{DirectionSnapshot, LayoutSnapshot, SessionSnapshot, TabSnapshot, WorkspaceSnapshot};
+use super::{
+    DirectionSnapshot, LayoutSnapshot, PaneSnapshot, SessionSnapshot, TabSnapshot,
+    WorkspaceSnapshot,
+};
 
-/// Restore workspaces from a snapshot. Each pane gets a fresh shell in its saved cwd.
+/// Restore workspaces from a snapshot. Each pane gets a fresh shell in its saved cwd,
+/// unless `resume_agents` is true and the pane had a detected agent at save time.
 pub fn restore(
     snapshot: &SessionSnapshot,
     rows: u16,
     cols: u16,
     scrollback_limit_bytes: usize,
     default_shell: &str,
+    resume_agents: bool,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
@@ -40,6 +45,7 @@ pub fn restore(
             cols,
             scrollback_limit_bytes,
             default_shell,
+            resume_agents,
             events.clone(),
             render_notify.clone(),
             render_dirty.clone(),
@@ -60,6 +66,7 @@ fn restore_workspace(
     cols: u16,
     scrollback_limit_bytes: usize,
     default_shell: &str,
+    resume_agents: bool,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
@@ -82,6 +89,7 @@ fn restore_workspace(
             cols,
             scrollback_limit_bytes,
             default_shell,
+            resume_agents,
             events.clone(),
             render_notify.clone(),
             render_dirty.clone(),
@@ -128,6 +136,7 @@ fn restore_tab(
     cols: u16,
     scrollback_limit_bytes: usize,
     default_shell: &str,
+    resume_agents: bool,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
@@ -179,18 +188,62 @@ fn restore_tab(
             .and_then(|old_id| snap.panes.get(old_id))
             .and_then(|p| p.agent_name.clone());
 
-        match TerminalRuntime::spawn(
-            *id,
-            rows,
-            cols,
-            cwd.clone(),
-            scrollback_limit_bytes,
-            crate::terminal_theme::TerminalTheme::default(),
-            default_shell,
-            events.clone(),
-            render_notify.clone(),
-            render_dirty.clone(),
-        ) {
+        // Try to resume the agent if enabled and snapshot has agent data.
+        let pane_snap = reverse_id_map
+            .get(id)
+            .and_then(|old_id| snap.panes.get(old_id));
+        let resume_result = if resume_agents {
+            try_resume_spawn(
+                pane_snap,
+                *id,
+                rows,
+                cols,
+                &cwd,
+                scrollback_limit_bytes,
+                events.clone(),
+                render_notify.clone(),
+                render_dirty.clone(),
+            )
+        } else {
+            None
+        };
+
+        let spawn_result = match resume_result {
+            Some(Ok(runtime)) => Ok(runtime),
+            Some(Err(e)) => {
+                warn!(
+                    pane_id = id.raw(),
+                    err = %e,
+                    "agent resume failed, falling back to shell"
+                );
+                TerminalRuntime::spawn(
+                    *id,
+                    rows,
+                    cols,
+                    cwd.clone(),
+                    scrollback_limit_bytes,
+                    crate::terminal_theme::TerminalTheme::default(),
+                    default_shell,
+                    events.clone(),
+                    render_notify.clone(),
+                    render_dirty.clone(),
+                )
+            }
+            None => TerminalRuntime::spawn(
+                *id,
+                rows,
+                cols,
+                cwd.clone(),
+                scrollback_limit_bytes,
+                crate::terminal_theme::TerminalTheme::default(),
+                default_shell,
+                events.clone(),
+                render_notify.clone(),
+                render_dirty.clone(),
+            ),
+        };
+
+        match spawn_result {
             Ok(runtime) => {
                 let terminal_id = TerminalId::alloc();
                 let mut terminal = TerminalState::new(terminal_id.clone(), cwd.clone());
@@ -199,6 +252,10 @@ fn restore_tab(
                 }
                 if let Some(agent_name) = saved_agent_name {
                     terminal.set_agent_name(agent_name);
+                }
+                // Preserve launch_argv on the restored terminal for future saves.
+                if let Some(argv) = pane_snap.and_then(|p| p.launch_argv.clone()) {
+                    terminal = terminal.with_launch_argv(argv);
                 }
                 panes.insert(*id, PaneState::new(terminal_id.clone()));
                 terminal_runtimes.insert(terminal_id, runtime);
@@ -252,6 +309,54 @@ fn restore_tab(
         },
         terminals,
         terminal_runtimes,
+    ))
+}
+
+/// Attempt to spawn a pane by resuming the agent that was running at save time.
+/// Returns `None` if no resume is possible (no agent data in snapshot).
+/// Returns `Some(Err(...))` if the resume command failed to spawn.
+fn try_resume_spawn(
+    pane_snap: Option<&PaneSnapshot>,
+    pane_id: PaneId,
+    rows: u16,
+    cols: u16,
+    cwd: &Path,
+    scrollback_limit_bytes: usize,
+    events: mpsc::Sender<AppEvent>,
+    render_notify: Arc<Notify>,
+    render_dirty: Arc<AtomicBool>,
+) -> Option<std::io::Result<TerminalRuntime>> {
+    let snap = pane_snap?;
+
+    // Determine the agent and construct resume argv.
+    let detected_agent = snap
+        .detected_agent
+        .as_deref()
+        .and_then(crate::detect::parse_agent_label);
+
+    let resume_argv = if let Some(agent) = detected_agent {
+        crate::detect::resume_argv(agent, snap.launch_argv.as_deref(), cwd)
+    } else {
+        // No detected agent but has launch_argv: replay as-is.
+        snap.launch_argv.clone()
+    };
+
+    let argv = resume_argv?;
+    if argv.is_empty() {
+        return None;
+    }
+
+    Some(TerminalRuntime::spawn_argv_command(
+        pane_id,
+        rows,
+        cols,
+        cwd.to_path_buf(),
+        &argv,
+        scrollback_limit_bytes,
+        crate::terminal_theme::TerminalTheme::default(),
+        events,
+        render_notify,
+        render_dirty,
     ))
 }
 

@@ -235,6 +235,7 @@ impl App {
                 80,
                 config.advanced.scrollback_limit_bytes,
                 &config.terminal.default_shell,
+                config.experimental.resume_agents,
                 event_tx.clone(),
                 render_notify.clone(),
                 render_dirty.clone(),

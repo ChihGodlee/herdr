@@ -8,7 +8,7 @@ use crate::layout::Node;
 use crate::workspace::Workspace;
 
 /// Current snapshot format version.
-pub(super) const SNAPSHOT_VERSION: u32 = 3;
+pub(super) const SNAPSHOT_VERSION: u32 = 4;
 
 /// Serializable snapshot of the entire herdr session.
 #[derive(Serialize, Deserialize)]
@@ -72,6 +72,12 @@ pub struct PaneSnapshot {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
+    /// The original argv used to launch this pane (if not a plain shell).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_argv: Option<Vec<String>>,
+    /// The detected agent kind at save time (canonical label string).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detected_agent: Option<String>,
 }
 
 /// Serializable BSP tree.
@@ -267,22 +273,24 @@ fn capture_tab(
         let cwd = tab
             .cwd_for_pane(*id, terminals, terminal_runtimes)
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
-        let label = tab
+        let terminal_state = tab
             .panes
             .get(id)
-            .and_then(|pane| terminals.get(&pane.attached_terminal_id))
-            .and_then(|terminal| terminal.manual_label.clone());
-        let agent_name = tab
-            .panes
-            .get(id)
-            .and_then(|pane| terminals.get(&pane.attached_terminal_id))
-            .and_then(|terminal| terminal.agent_name.clone());
+            .and_then(|pane| terminals.get(&pane.attached_terminal_id));
+        let label = terminal_state.and_then(|t| t.manual_label.clone());
+        let agent_name = terminal_state.and_then(|t| t.agent_name.clone());
+        let launch_argv = terminal_state.and_then(|t| t.launch_argv.clone());
+        let detected_agent = terminal_state
+            .and_then(|t| t.detected_agent)
+            .map(|agent| crate::detect::agent_label(agent).to_string());
         panes.insert(
             id.raw(),
             PaneSnapshot {
                 cwd,
                 label,
                 agent_name,
+                launch_argv,
+                detected_agent,
             },
         );
     }

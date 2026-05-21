@@ -9,5 +9,6 @@ mod snapshot;
 pub use self::io::{clear, load, save};
 pub use self::restore::restore;
 pub use self::snapshot::{
-    capture, DirectionSnapshot, LayoutSnapshot, SessionSnapshot, TabSnapshot, WorkspaceSnapshot,
+    capture, DirectionSnapshot, LayoutSnapshot, PaneSnapshot, SessionSnapshot, TabSnapshot,
+    WorkspaceSnapshot,
 };

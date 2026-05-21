@@ -75,6 +75,50 @@ pub fn parse_agent_label(agent: &str) -> Option<Agent> {
     }
 }
 
+/// Construct the argv to resume/restart an agent in a pane.
+/// Returns `None` if the agent has no known resume mechanism and no
+/// original `launch_argv` is available.
+pub fn resume_argv(
+    agent: Agent,
+    original_launch_argv: Option<&[String]>,
+    _cwd: &std::path::Path,
+) -> Option<Vec<String>> {
+    match agent {
+        Agent::Claude => Some(inject_flag_or_default(
+            original_launch_argv,
+            "claude",
+            "--continue",
+        )),
+        Agent::Droid => Some(inject_flag_or_default(
+            original_launch_argv,
+            "droid",
+            "--resume",
+        )),
+        // Agents without known resume: replay original argv if available.
+        _ => original_launch_argv.map(|argv| argv.to_vec()),
+    }
+}
+
+/// If original_argv exists, inject `flag` after the program name (unless
+/// already present). Otherwise return `[program, flag]`.
+fn inject_flag_or_default(
+    original_argv: Option<&[String]>,
+    program: &str,
+    flag: &str,
+) -> Vec<String> {
+    if let Some(argv) = original_argv {
+        if argv.iter().any(|a| a == flag) {
+            return argv.to_vec();
+        }
+        let mut new_argv = vec![argv[0].clone()];
+        new_argv.push(flag.to_string());
+        new_argv.extend(argv[1..].iter().cloned());
+        new_argv
+    } else {
+        vec![program.to_string(), flag.to_string()]
+    }
+}
+
 /// Identify which agent is running from the process name.
 /// Returns `None` for plain shells or unrecognized programs.
 pub fn identify_agent(process_name: &str) -> Option<Agent> {

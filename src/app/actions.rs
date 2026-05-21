@@ -780,12 +780,21 @@ impl AppState {
                 pane_id,
                 agent,
                 state,
-            } => self
-                .update_terminal_state(pane_id, |terminal| {
-                    terminal.set_detected_state(agent, state)
-                })
-                .into_iter()
-                .collect(),
+            } => {
+                let updates: Vec<_> = self
+                    .update_terminal_state(pane_id, |terminal| {
+                        terminal.set_detected_state(agent, state)
+                    })
+                    .into_iter()
+                    .collect();
+                if updates
+                    .iter()
+                    .any(|u| u.previous_known_agent != u.known_agent)
+                {
+                    self.mark_session_dirty();
+                }
+                updates
+            }
             AppEvent::HookStateReported {
                 pane_id,
                 source,

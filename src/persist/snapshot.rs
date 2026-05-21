@@ -281,7 +281,7 @@ fn capture_tab(
         let agent_name = terminal_state.and_then(|t| t.agent_name.clone());
         let launch_argv = terminal_state.and_then(|t| t.launch_argv.clone());
         let detected_agent = terminal_state
-            .and_then(|t| t.detected_agent)
+            .and_then(|t| t.effective_known_agent())
             .map(|agent| crate::detect::agent_label(agent).to_string());
         panes.insert(
             id.raw(),

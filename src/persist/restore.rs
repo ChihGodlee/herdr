@@ -211,23 +211,10 @@ fn restore_tab(
         let spawn_result = match resume_result {
             Some(Ok(runtime)) => Ok(runtime),
             Some(Err(e)) => {
-                warn!(
-                    pane_id = id.raw(),
-                    err = %e,
-                    "agent resume failed, falling back to shell"
-                );
-                TerminalRuntime::spawn(
-                    *id,
-                    rows,
-                    cols,
-                    cwd.clone(),
-                    scrollback_limit_bytes,
-                    crate::terminal_theme::TerminalTheme::default(),
-                    default_shell,
-                    events.clone(),
-                    render_notify.clone(),
-                    render_dirty.clone(),
-                )
+                // Resume was attempted but failed. Do NOT fall back to a plain
+                // shell — that would silently lose the agent session context.
+                // Skip this pane instead (the outer match logs the error).
+                Err(e)
             }
             None => TerminalRuntime::spawn(
                 *id,

@@ -200,6 +200,7 @@ fn restore_tab(
                 cols,
                 &cwd,
                 scrollback_limit_bytes,
+                default_shell,
                 events.clone(),
                 render_notify.clone(),
                 render_dirty.clone(),
@@ -306,6 +307,9 @@ fn restore_tab(
 /// Attempt to spawn a pane by resuming the agent that was running at save time.
 /// Returns `None` if no resume is possible (no agent data in snapshot).
 /// Returns `Some(Err(...))` if the resume command failed to spawn.
+///
+/// The resume command is wrapped in a shell so that when the agent exits, the
+/// pane drops back into the user's shell instead of closing the pane.
 fn try_resume_spawn(
     pane_snap: Option<&PaneSnapshot>,
     pane_id: PaneId,
@@ -313,6 +317,7 @@ fn try_resume_spawn(
     cols: u16,
     cwd: &Path,
     scrollback_limit_bytes: usize,
+    default_shell: &str,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
@@ -342,18 +347,50 @@ fn try_resume_spawn(
         return None;
     }
 
+    // Wrap the resume command in a shell so the pane survives agent exit.
+    // After the agent process ends, exec the user's shell so they get a
+    // working terminal instead of a dead pane.
+    let escaped: Vec<String> = argv.iter().map(|a| shell_escape(a)).collect();
+    let cmd_str = escaped.join(" ");
+    let fallback_shell = if default_shell.trim().is_empty() {
+        "${SHELL:-/bin/sh}".to_string()
+    } else {
+        shell_escape(default_shell)
+    };
+    let wrapped = format!("{cmd_str}; exec {fallback_shell}");
+    let wrapped_argv = vec!["/bin/sh".to_string(), "-c".to_string(), wrapped];
+
     Some(TerminalRuntime::spawn_argv_command(
         pane_id,
         rows,
         cols,
         cwd.to_path_buf(),
-        &argv,
+        &wrapped_argv,
         scrollback_limit_bytes,
         crate::terminal_theme::TerminalTheme::default(),
         events,
         render_notify,
         render_dirty,
     ))
+}
+
+/// Quote a string for safe inclusion in a shell command via single quotes.
+fn shell_escape(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    // Wrap in single quotes; escape any embedded single quotes.
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
 }
 
 pub(super) fn prune_restored_node(node: Node, surviving: &HashSet<PaneId>) -> Option<Node> {

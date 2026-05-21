@@ -257,6 +257,10 @@ fn restore_tab(
                 if let Some(argv) = pane_snap.and_then(|p| p.launch_argv.clone()) {
                     terminal = terminal.with_launch_argv(argv);
                 }
+                // Preserve agent_session_id for future resume cycles.
+                if let Some(sid) = pane_snap.and_then(|p| p.agent_session_id.clone()) {
+                    terminal.set_agent_session_id(sid);
+                }
                 panes.insert(*id, PaneState::new(terminal_id.clone()));
                 terminal_runtimes.insert(terminal_id, runtime);
                 terminals.push(terminal);
@@ -335,7 +339,12 @@ fn try_resume_spawn(
         .and_then(crate::detect::parse_agent_label);
 
     let resume_argv = if let Some(agent) = detected_agent {
-        crate::detect::resume_argv(agent, snap.launch_argv.as_deref(), cwd)
+        crate::detect::resume_argv(
+            agent,
+            snap.launch_argv.as_deref(),
+            snap.agent_session_id.as_deref(),
+            cwd,
+        )
     } else {
         // No detected agent but has launch_argv: replay as-is.
         snap.launch_argv.clone()

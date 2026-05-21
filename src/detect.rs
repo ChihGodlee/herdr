@@ -81,14 +81,27 @@ pub fn parse_agent_label(agent: &str) -> Option<Agent> {
 pub fn resume_argv(
     agent: Agent,
     original_launch_argv: Option<&[String]>,
+    session_id: Option<&str>,
     _cwd: &std::path::Path,
 ) -> Option<Vec<String>> {
     match agent {
-        Agent::Claude => Some(inject_flag_or_default(
-            original_launch_argv,
-            "claude",
-            "--continue",
-        )),
+        Agent::Claude => {
+            if let Some(sid) = session_id {
+                // Per-session resume: `claude --resume <session_id>`
+                Some(vec![
+                    "claude".to_string(),
+                    "--resume".to_string(),
+                    sid.to_string(),
+                ])
+            } else {
+                // Fallback: continue most recent session in cwd
+                Some(inject_flag_or_default(
+                    original_launch_argv,
+                    "claude",
+                    "--continue",
+                ))
+            }
+        }
         Agent::Droid => Some(inject_flag_or_default(
             original_launch_argv,
             "droid",

@@ -3583,6 +3583,7 @@ mod tests {
                     message: None,
                     custom_status: None,
                     seq: Some(19),
+                    session_id: None,
                 }),
             },
             respond_to,

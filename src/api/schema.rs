@@ -274,6 +274,10 @@ pub struct PaneReportAgentParams {
     pub custom_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
+    /// Per-session identifier reported by the agent's hook (e.g. Claude's
+    /// `session_id` from hook stdin). Used for per-pane resume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -833,6 +837,7 @@ mod tests {
                 message: Some("thinking".into()),
                 custom_status: Some("indexing".into()),
                 seq: Some(42),
+                session_id: None,
             }),
         };
 

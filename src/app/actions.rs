@@ -803,19 +803,29 @@ impl AppState {
                 message,
                 custom_status,
                 seq,
-            } => self
-                .update_terminal_state(pane_id, |terminal| {
-                    terminal.set_hook_authority_with_custom_status(
-                        source,
-                        agent_label,
-                        state,
-                        message,
-                        custom_status,
-                        seq,
-                    )
-                })
-                .into_iter()
-                .collect(),
+                session_id,
+            } => {
+                let updates: Vec<_> = self
+                    .update_terminal_state(pane_id, |terminal| {
+                        if let Some(sid) = session_id.as_deref() {
+                            terminal.set_agent_session_id(sid.to_string());
+                        }
+                        terminal.set_hook_authority_with_custom_status(
+                            source,
+                            agent_label,
+                            state,
+                            message,
+                            custom_status,
+                            seq,
+                        )
+                    })
+                    .into_iter()
+                    .collect();
+                if !updates.is_empty() {
+                    self.mark_session_dirty();
+                }
+                updates
+            }
             AppEvent::HookAuthorityCleared {
                 pane_id,
                 source,
@@ -1578,6 +1588,7 @@ mod tests {
             message: None,
             custom_status: None,
             seq: None,
+            session_id: None,
         });
 
         let toast = state.toast.as_ref().unwrap();

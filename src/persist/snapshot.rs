@@ -78,6 +78,10 @@ pub struct PaneSnapshot {
     /// The detected agent kind at save time (canonical label string).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detected_agent: Option<String>,
+    /// Per-session identifier reported by the agent's hook. Used for
+    /// per-pane resume (e.g. `claude --resume <session_id>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_session_id: Option<String>,
 }
 
 /// Serializable BSP tree.
@@ -283,6 +287,7 @@ fn capture_tab(
         let detected_agent = terminal_state
             .and_then(|t| t.effective_known_agent())
             .map(|agent| crate::detect::agent_label(agent).to_string());
+        let agent_session_id = terminal_state.and_then(|t| t.agent_session_id.clone());
         panes.insert(
             id.raw(),
             PaneSnapshot {
@@ -291,6 +296,7 @@ fn capture_tab(
                 agent_name,
                 launch_argv,
                 detected_agent,
+                agent_session_id,
             },
         );
     }

@@ -2,7 +2,7 @@
 # installed by herdr
 # safe to edit. this hook only activates inside herdr-managed panes.
 # HERDR_INTEGRATION_ID=claude
-# HERDR_INTEGRATION_VERSION=2
+# HERDR_INTEGRATION_VERSION=4
 
 set -eu
 
@@ -47,9 +47,18 @@ if hook_input_file:
     except Exception:
         hook_input = {}
 
+hook_event_name = str(hook_input.get("hook_event_name") or "")
 is_subagent = bool(hook_input.get("agent_id"))
+if hook_event_name == "SubagentStop":
+    # SubagentStop is a completion event. Older Herdr integrations mapped it
+    # to durable working, but Claude recap/away-summary can emit it after the
+    # main turn has already stopped. Never let it revive an idle pane.
+    raise SystemExit(0)
 if is_subagent and action in ("idle", "release"):
-    action = "working"
+    # Subagent completion must not make the parent pane look done early.
+    raise SystemExit(0)
+
+session_id = hook_input.get("session_id")
 
 request_id = f"{source}:{int(time.time() * 1000)}:{random.randrange(1_000_000):06d}"
 report_seq = time.time_ns()
@@ -65,16 +74,19 @@ if action == "release":
         },
     }
 else:
+    params = {
+        "pane_id": pane_id,
+        "source": source,
+        "agent": "claude",
+        "state": action,
+        "seq": report_seq,
+    }
+    if session_id:
+        params["session_id"] = session_id
     request = {
         "id": request_id,
         "method": "pane.report_agent",
-        "params": {
-            "pane_id": pane_id,
-            "source": source,
-            "agent": "claude",
-            "state": action,
-            "seq": report_seq,
-        },
+        "params": params,
     }
 
 try:

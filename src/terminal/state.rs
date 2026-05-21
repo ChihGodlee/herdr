@@ -39,6 +39,9 @@ pub struct TerminalState {
     pub hook_authority: Option<HookAuthority>,
     pub manual_label: Option<String>,
     pub agent_name: Option<String>,
+    /// Per-session identifier reported by the agent's hook (e.g. Claude's
+    /// `session_id` from hook stdin). Used for per-pane resume.
+    pub agent_session_id: Option<String>,
     hook_report_sequences: HashMap<String, u64>,
     pub state: AgentState,
     pub revision: u64,
@@ -55,6 +58,7 @@ impl TerminalState {
             hook_authority: None,
             manual_label: None,
             agent_name: None,
+            agent_session_id: None,
             hook_report_sequences: HashMap::new(),
             state: AgentState::Unknown,
             revision: 0,
@@ -263,6 +267,15 @@ impl TerminalState {
 
     pub fn clear_agent_name(&mut self) {
         self.agent_name = None;
+    }
+
+    pub fn set_agent_session_id(&mut self, id: String) {
+        let id = id.trim().to_string();
+        self.agent_session_id = (!id.is_empty()).then_some(id);
+    }
+
+    pub fn clear_agent_session_id(&mut self) {
+        self.agent_session_id = None;
     }
 
     pub fn is_agent_terminal(&self) -> bool {

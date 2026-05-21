@@ -1282,6 +1282,7 @@ impl App {
                     message: params.message,
                     custom_status: normalize_custom_status(params.custom_status),
                     seq: params.seq,
+                    session_id: params.session_id,
                 });
                 SuccessResponse {
                     id: request.id,

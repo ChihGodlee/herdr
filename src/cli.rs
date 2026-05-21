@@ -1543,6 +1543,7 @@ fn pane_report_agent(args: &[String]) -> std::io::Result<i32> {
         message,
         custom_status,
         seq,
+        session_id: None,
     }))
 }
 

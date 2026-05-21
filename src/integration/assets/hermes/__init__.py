@@ -1,7 +1,7 @@
 """Hermes plugin installed by Herdr to report agent lifecycle state."""
 
 # HERDR_INTEGRATION_ID=hermes
-# HERDR_INTEGRATION_VERSION=1
+# HERDR_INTEGRATION_VERSION=2
 
 from __future__ import annotations
 
@@ -23,6 +23,28 @@ def _base_params() -> tuple[str, str] | None:
     if not pane_id or not socket_path:
         return None
     return pane_id, socket_path
+
+
+def _extract_session_id(kwargs: dict) -> str | None:
+    """Try common locations for session/conversation identifiers."""
+    if not kwargs:
+        return None
+    sid = kwargs.get("session_id") or kwargs.get("conversation_id")
+    if sid:
+        return str(sid)
+    sess = kwargs.get("session")
+    if isinstance(sess, dict):
+        sid = sess.get("id")
+        if sid:
+            return str(sid)
+    elif sess is not None and hasattr(sess, "id"):
+        return str(getattr(sess, "id"))
+    ctx = kwargs.get("context")
+    if isinstance(ctx, dict):
+        sid = ctx.get("session_id") or ctx.get("conversation_id")
+        if sid:
+            return str(sid)
+    return None
 
 
 def _send(method: str, params: dict) -> None:
@@ -56,8 +78,11 @@ def _send(method: str, params: dict) -> None:
         pass
 
 
-def _report(state: str) -> None:
-    _send("pane.report_agent", {"state": state})
+def _report(state: str, session_id: str | None = None) -> None:
+    params = {"state": state}
+    if session_id:
+        params["session_id"] = session_id
+    _send("pane.report_agent", params)
 
 
 def _release() -> None:
@@ -65,18 +90,15 @@ def _release() -> None:
 
 
 def _working(**kwargs) -> None:
-    del kwargs
-    _report("working")
+    _report("working", _extract_session_id(kwargs))
 
 
 def _blocked(**kwargs) -> None:
-    del kwargs
-    _report("blocked")
+    _report("blocked", _extract_session_id(kwargs))
 
 
 def _idle(**kwargs) -> None:
-    del kwargs
-    _report("idle")
+    _report("idle", _extract_session_id(kwargs))
 
 
 def _finalize(**kwargs) -> None:

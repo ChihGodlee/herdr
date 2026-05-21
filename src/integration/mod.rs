@@ -12,7 +12,7 @@ use crate::layout::PaneId;
 pub(crate) const HERDR_PANE_ID_ENV_VAR: &str = "HERDR_PANE_ID";
 const PI_EXTENSION_INSTALL_NAME: &str = "herdr-agent-state.ts";
 const PI_EXTENSION_ASSET: &str = include_str!("assets/pi/herdr-agent-state.ts");
-const PI_INTEGRATION_VERSION: u32 = 1;
+const PI_INTEGRATION_VERSION: u32 = 2;
 const PI_CODING_AGENT_DIR_ENV_VAR: &str = "PI_CODING_AGENT_DIR";
 const CLAUDE_HOOK_INSTALL_NAME: &str = "herdr-agent-state.sh";
 const CLAUDE_HOOK_ASSET: &str = include_str!("assets/claude/herdr-agent-state.sh");
@@ -20,17 +20,17 @@ const CLAUDE_INTEGRATION_VERSION: u32 = 4;
 const CLAUDE_CONFIG_DIR_ENV_VAR: &str = "CLAUDE_CONFIG_DIR";
 const CODEX_HOOK_INSTALL_NAME: &str = "herdr-agent-state.sh";
 const CODEX_HOOK_ASSET: &str = include_str!("assets/codex/herdr-agent-state.sh");
-const CODEX_INTEGRATION_VERSION: u32 = 3;
+const CODEX_INTEGRATION_VERSION: u32 = 4;
 const CODEX_HOME_ENV_VAR: &str = "CODEX_HOME";
 const OPENCODE_PLUGIN_INSTALL_NAME: &str = "herdr-agent-state.js";
 const OPENCODE_PLUGIN_ASSET: &str = include_str!("assets/opencode/herdr-agent-state.js");
-const OPENCODE_INTEGRATION_VERSION: u32 = 1;
+const OPENCODE_INTEGRATION_VERSION: u32 = 2;
 const HERMES_PLUGIN_INSTALL_NAME: &str = "herdr-agent-state";
 const HERMES_PLUGIN_MANIFEST_INSTALL_NAME: &str = "plugin.yaml";
 const HERMES_PLUGIN_INIT_INSTALL_NAME: &str = "__init__.py";
 const HERMES_PLUGIN_MANIFEST_ASSET: &str = include_str!("assets/hermes/plugin.yaml");
 const HERMES_PLUGIN_INIT_ASSET: &str = include_str!("assets/hermes/__init__.py");
-const HERMES_INTEGRATION_VERSION: u32 = 1;
+const HERMES_INTEGRATION_VERSION: u32 = 2;
 const INTEGRATION_VERSION_MARKER: &str = "HERDR_INTEGRATION_VERSION=";
 
 #[derive(Debug)]
@@ -1830,7 +1830,7 @@ mod tests {
 
         assert_eq!(claude.path, hook_path);
         assert_eq!(claude.installed_version, Some(1));
-        assert_eq!(claude.expected_version, 2);
+        assert_eq!(claude.expected_version, CLAUDE_INTEGRATION_VERSION);
         assert_eq!(claude.state, IntegrationStatusKind::Outdated);
 
         std::env::remove_var("HOME");
@@ -1932,7 +1932,7 @@ mod tests {
 
         assert_eq!(codex.path, hook_path);
         assert_eq!(codex.installed_version, Some(2));
-        assert_eq!(codex.expected_version, 3);
+        assert_eq!(codex.expected_version, CODEX_INTEGRATION_VERSION);
         assert_eq!(codex.state, IntegrationStatusKind::Outdated);
 
         std::env::remove_var("HOME");

@@ -102,12 +102,54 @@ pub fn resume_argv(
                 ))
             }
         }
-        Agent::Droid => Some(inject_flag_or_default(
-            original_launch_argv,
-            "droid",
-            "--resume",
-        )),
-        // Agents without known resume: replay original argv if available.
+        Agent::Codex => {
+            if let Some(sid) = session_id {
+                // Per-session resume: `codex resume <session_id>`
+                Some(vec![
+                    "codex".to_string(),
+                    "resume".to_string(),
+                    sid.to_string(),
+                ])
+            } else {
+                // Fallback: most recent session via picker
+                Some(vec![
+                    "codex".to_string(),
+                    "resume".to_string(),
+                    "--last".to_string(),
+                ])
+            }
+        }
+        Agent::OpenCode => {
+            if let Some(sid) = session_id {
+                // Per-session resume: `opencode --session <session_id>`
+                Some(vec![
+                    "opencode".to_string(),
+                    "--session".to_string(),
+                    sid.to_string(),
+                ])
+            } else {
+                // Fallback: continue last session
+                Some(vec!["opencode".to_string(), "--continue".to_string()])
+            }
+        }
+        Agent::Droid => {
+            if let Some(sid) = session_id {
+                // Per-session resume: `droid --resume <session_id>`
+                Some(vec![
+                    "droid".to_string(),
+                    "--resume".to_string(),
+                    sid.to_string(),
+                ])
+            } else {
+                // Fallback: --resume without id (last session)
+                Some(inject_flag_or_default(
+                    original_launch_argv,
+                    "droid",
+                    "--resume",
+                ))
+            }
+        }
+        // Agents without known resume CLI: replay original argv if available.
         _ => original_launch_argv.map(|argv| argv.to_vec()),
     }
 }

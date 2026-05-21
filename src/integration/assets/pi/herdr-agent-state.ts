@@ -1,7 +1,7 @@
 // installed by herdr
 // safe to edit. this integration only activates inside herdr-managed panes.
 // HERDR_INTEGRATION_ID=pi
-// HERDR_INTEGRATION_VERSION=1
+// HERDR_INTEGRATION_VERSION=2
 // @ts-nocheck
 
 import { createConnection } from "node:net";
@@ -13,6 +13,28 @@ const source = "herdr:pi";
 
 function enabled() {
   return HERDR_ENV === "1" && !!socketPath && !!paneId;
+}
+
+function extractSessionId(event: any): string | undefined {
+  if (!event) return undefined;
+  // Try common locations for session/conversation identifiers.
+  const candidates = [
+    event.sessionId,
+    event.session_id,
+    event.conversationId,
+    event.conversation_id,
+    typeof event.session === "object" ? event.session?.id : undefined,
+    typeof event.conversation === "object" ? event.conversation?.id : undefined,
+    typeof event.context === "object"
+      ? event.context?.sessionId ?? event.context?.session_id
+      : undefined,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) {
+      return c;
+    }
+  }
+  return undefined;
 }
 
 function sendRequest(request: unknown): Promise<void> {
@@ -44,6 +66,7 @@ type AgentState = "working" | "blocked" | "idle";
 type QueuedState = {
   state: AgentState;
   message?: string;
+  sessionId?: string;
   seq: number;
 };
 
@@ -70,26 +93,35 @@ function parseDurationEnv(name: string, fallback: number): number {
   return parsed;
 }
 
-function sendState(state: AgentState, message?: string, seq = nextReportSeq()): Promise<void> {
+function sendState(
+  state: AgentState,
+  message?: string,
+  sessionId?: string,
+  seq = nextReportSeq(),
+): Promise<void> {
+  const params: any = {
+    pane_id: paneId,
+    source,
+    agent: "pi",
+    state,
+    message,
+    seq,
+  };
+  if (sessionId) {
+    params.session_id = sessionId;
+  }
   return sendRequest({
     id: `${source}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
     method: "pane.report_agent",
-    params: {
-      pane_id: paneId,
-      source,
-      agent: "pi",
-      state,
-      message,
-      seq,
-    },
+    params,
   });
 }
 
 let sendInFlight = false;
 let queuedState: QueuedState | undefined;
 
-function queueState(state: AgentState, message?: string): void {
-  queuedState = { state, message, seq: nextReportSeq() };
+function queueState(state: AgentState, message?: string, sessionId?: string): void {
+  queuedState = { state, message, sessionId, seq: nextReportSeq() };
   if (!sendInFlight) {
     void drainStateQueue();
   }
@@ -105,7 +137,7 @@ async function drainStateQueue(): Promise<void> {
     while (queuedState) {
       const next = queuedState;
       queuedState = undefined;
-      await sendState(next.state, next.message, next.seq);
+      await sendState(next.state, next.message, next.sessionId, next.seq);
     }
   } finally {
     sendInFlight = false;
@@ -165,6 +197,8 @@ export default function (pi) {
   let blockedMessage: string | undefined;
   let lastState: AgentState | undefined;
   let lastMessage: string | undefined;
+  let lastSessionId: string | undefined;
+  let currentSessionId: string | undefined;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -202,12 +236,17 @@ export default function (pi) {
 
   function publishState() {
     const next = desiredState();
-    if (next.state === lastState && next.message === lastMessage) {
+    if (
+      next.state === lastState &&
+      next.message === lastMessage &&
+      currentSessionId === lastSessionId
+    ) {
       return;
     }
     lastState = next.state;
     lastMessage = next.message;
-    queueState(next.state, next.message);
+    lastSessionId = currentSessionId;
+    queueState(next.state, next.message, currentSessionId);
   }
 
   function scheduleIdle() {
@@ -237,6 +276,8 @@ export default function (pi) {
   }
 
   pi.events.on("herdr:blocked", (data) => {
+    const sid = extractSessionId(data);
+    if (sid) currentSessionId = sid;
     if (!data?.active) {
       blockedCount = Math.max(0, blockedCount - 1);
       if (blockedCount === 0) {
@@ -252,7 +293,9 @@ export default function (pi) {
     publishState();
   });
 
-  pi.on("agent_start", () => {
+  pi.on("agent_start", (event) => {
+    const sid = extractSessionId(event);
+    if (sid) currentSessionId = sid;
     clearPendingTimers();
     clearFailureState();
     agentActive = true;
@@ -260,6 +303,8 @@ export default function (pi) {
   });
 
   pi.on("agent_end", (event) => {
+    const sid = extractSessionId(event);
+    if (sid) currentSessionId = sid;
     if (!agentActive) {
       // Pi can emit duplicate/late end events while auto-retry is already
       // holding the pane in Working. Do not let an unqualified duplicate end

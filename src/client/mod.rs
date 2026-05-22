@@ -56,6 +56,10 @@ struct ClientState {
     kitty_graphics_enabled: bool,
     /// Direct attach prefix escape state. None for full-app clients.
     attach_escape: Option<AttachEscapeState>,
+    /// True when the host terminal is Apple Terminal; forces full blit every
+    /// frame to counteract inline IME preedit corrupting cells adjacent to
+    /// pane borders.
+    is_apple_terminal: bool,
 }
 
 #[derive(Debug, Default)]
@@ -565,6 +569,11 @@ async fn run_client_loop(
         sound_config,
         kitty_graphics_enabled,
         attach_escape,
+        is_apple_terminal: crate::app::detect_apple_terminal_from_env(
+            std::env::var("TERM_PROGRAM").ok().as_deref(),
+            std::env::var_os("TMUX").is_some(),
+            std::env::var("TERM_SESSION_ID").ok().as_deref(),
+        ),
     };
     debug!(?negotiated_encoding, "client render encoding active");
 

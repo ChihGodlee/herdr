@@ -10,6 +10,9 @@
 ### Fixed
 - Remote clients now bridge local clipboard images into the remote pane by staging them as temporary image files and pasting the remote path, so Claude Code image paste works over `herdr --remote`. (#205)
 
+### Known Limitations
+- macOS Terminal.app + CJK input method: when using a Chinese/Japanese/Korean IME in a multi-pane layout, pane borders may briefly break during active composition (while the candidate window is visible). This is caused by Terminal.app's inline IME inserting characters at the cursor position and pushing adjacent cells (including pane borders) off-screen. Borders restore automatically when the composition is committed. For the best CJK input experience, use iTerm2, Ghostty, or WezTerm.
+
 ### Breaking Changes
 - The client/server protocol is now version 8. Stop and restart any running v0.5.12 server before attaching with this release.
 

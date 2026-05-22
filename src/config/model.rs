@@ -199,7 +199,7 @@ pub struct AdvancedConfig {
     pub scrollback_limit_bytes: usize,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct ExperimentalConfig {
     /// Allow launching herdr inside an existing herdr pane. Default: false.
@@ -211,6 +211,26 @@ pub struct ExperimentalConfig {
     /// droid) use their native resume mechanism; others replay the original
     /// launch argv. Default: false.
     pub resume_agents: bool,
+    /// Force a full redraw after each non-ASCII character arrives from stdin
+    /// when running under Apple Terminal. Works around the way Terminal.app's
+    /// inline IME preedit corrupts cells next to herdr pane borders. Default: true.
+    #[serde(default = "default_apple_terminal_ime_redraw")]
+    pub apple_terminal_ime_redraw: bool,
+}
+
+fn default_apple_terminal_ime_redraw() -> bool {
+    true
+}
+
+impl Default for ExperimentalConfig {
+    fn default() -> Self {
+        Self {
+            allow_nested: false,
+            kitty_graphics: false,
+            resume_agents: false,
+            apple_terminal_ime_redraw: default_apple_terminal_ime_redraw(),
+        }
+    }
 }
 
 impl Default for KeysConfig {
@@ -483,15 +503,38 @@ kitty_graphics = true
     }
 
     #[test]
+    fn apple_terminal_ime_redraw_default_on_and_parse() {
+        let config = Config::default();
+        assert!(config.experimental.apple_terminal_ime_redraw);
+
+        // Empty experimental section keeps the default.
+        let toml = r#"
+[experimental]
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.experimental.apple_terminal_ime_redraw);
+
+        // Explicit override turns it off.
+        let toml = r#"
+[experimental]
+apple_terminal_ime_redraw = false
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(!config.experimental.apple_terminal_ime_redraw);
+    }
+
+    #[test]
     fn experimental_config_parses() {
         let toml = r#"
 [experimental]
 allow_nested = true
 kitty_graphics = true
+apple_terminal_ime_redraw = false
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert!(config.experimental.allow_nested);
         assert!(config.experimental.kitty_graphics);
+        assert!(!config.experimental.apple_terminal_ime_redraw);
     }
 
     #[test]

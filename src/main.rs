@@ -191,6 +191,9 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Experimental local Kitty graphics rendering for attached clients.
 # Requires a Kitty graphics-compatible outer terminal.
 # kitty_graphics = false
+# Force a full redraw after each non-ASCII character when running under
+# Apple Terminal, to repair pane borders corrupted by inline IME preedit.
+# apple_terminal_ime_redraw = true
 
 [advanced]
 # Maximum scrollback buffer size in bytes retained per pane terminal.

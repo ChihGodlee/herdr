@@ -63,6 +63,7 @@ impl App {
                         } else {
                             self.suppressed_repeat_keys.insert(key_id);
                         }
+                        self.maybe_request_apple_terminal_ime_redraw(&key);
                         self.handle_key(key).await;
                         true
                     }
@@ -108,6 +109,29 @@ impl App {
                 self.update_host_terminal_theme(kind, color)
             }
             crate::raw_input::RawInputEvent::Unsupported => false,
+        }
+    }
+
+    /// Request a full redraw if the just-handled key looks like an Apple
+    /// Terminal IME commit. Apple Terminal renders inline IME preedit by
+    /// inserting characters directly into terminal cells, which silently
+    /// corrupts the cells next to herdr's pane borders. ratatui's diff
+    /// engine doesn't notice (its model is unchanged), so the borders stay
+    /// broken until something forces a clear. We force one here on every
+    /// non-ASCII Char that arrives without modifiers, which is the shape
+    /// `extract_one_event` produces for committed CJK / dead-key input.
+    ///
+    /// Gated to `is_apple_terminal` to keep this a no-op everywhere else.
+    fn maybe_request_apple_terminal_ime_redraw(&mut self, key: &crate::input::TerminalKey) {
+        if !self.state.is_apple_terminal || !self.state.apple_terminal_ime_redraw {
+            return;
+        }
+        if let crossterm::event::KeyCode::Char(c) = key.code {
+            if (c as u32) > 0x7F
+                && key.modifiers == crossterm::event::KeyModifiers::NONE
+            {
+                self.request_full_redraw();
+            }
         }
     }
 

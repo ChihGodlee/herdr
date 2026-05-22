@@ -193,6 +193,45 @@ fn resolve_palette_with_legacy_accent(
     palette
 }
 
+/// Detect whether the host terminal is Apple Terminal (Terminal.app), either
+/// directly or via tmux nested inside it. The result drives the
+/// `apple_terminal_ime_redraw` workaround in `handle_raw_input_event`.
+///
+/// Direct case: `TERM_PROGRAM=Apple_Terminal` is the canonical signal.
+///
+/// tmux-nested case: tmux rewrites `TERM_PROGRAM` to `"tmux"`, so we instead
+/// look at `TERM_SESSION_ID`, which Apple Terminal sets to the form
+/// `wNtNpN:UUID` (e.g. `w0t0p0:00000000-0000-0000-0000-000000000000`). tmux
+/// inherits this env var without an unset list, so it leaks through. iTerm2
+/// uses a different env var (`ITERM_SESSION_ID`), and Ghostty / WezTerm do
+/// not set `TERM_SESSION_ID`, so this signal is unambiguous in practice.
+pub(crate) fn detect_apple_terminal_from_env(
+    term_program: Option<&str>,
+    in_tmux: bool,
+    term_session_id: Option<&str>,
+) -> bool {
+    if term_program == Some("Apple_Terminal") {
+        return true;
+    }
+    if in_tmux {
+        if let Some(id) = term_session_id {
+            // Match `wNtNpN:...` — Apple Terminal's TERM_SESSION_ID format.
+            if id.starts_with('w') && id.contains(':') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn detect_apple_terminal_host() -> bool {
+    detect_apple_terminal_from_env(
+        std::env::var("TERM_PROGRAM").ok().as_deref(),
+        std::env::var_os("TMUX").is_some(),
+        std::env::var("TERM_SESSION_ID").ok().as_deref(),
+    )
+}
+
 impl App {
     pub fn new(
         config: &Config,
@@ -414,6 +453,8 @@ impl App {
             prompt_new_tab_name: config.ui.prompt_new_tab_name,
             show_agent_labels_on_pane_borders: config.ui.show_agent_labels_on_pane_borders,
             kitty_graphics_enabled: config.experimental.kitty_graphics,
+            is_apple_terminal: detect_apple_terminal_host(),
+            apple_terminal_ime_redraw: config.experimental.apple_terminal_ime_redraw,
             default_shell: config.terminal.default_shell.clone(),
             pane_scrollback_limit_bytes: config.advanced.scrollback_limit_bytes,
             accent: crate::config::parse_color(&config.ui.accent),
@@ -891,6 +932,8 @@ impl App {
             if was_kitty_graphics_enabled && !config.experimental.kitty_graphics {
                 let _ = crate::kitty_graphics::clear_all_host_graphics();
             }
+            self.state.apple_terminal_ime_redraw =
+                config.experimental.apple_terminal_ime_redraw;
         }
 
         if !invalid_section("advanced") {
@@ -1161,6 +1204,123 @@ mod tests {
         } else {
             std::env::remove_var("XDG_STATE_HOME");
         }
+    }
+
+    #[test]
+    fn detect_apple_terminal_from_term_program() {
+        assert!(detect_apple_terminal_from_env(
+            Some("Apple_Terminal"),
+            false,
+            None,
+        ));
+        assert!(!detect_apple_terminal_from_env(
+            Some("iTerm.app"),
+            false,
+            None
+        ));
+        assert!(!detect_apple_terminal_from_env(
+            Some("ghostty"),
+            false,
+            None
+        ));
+        assert!(!detect_apple_terminal_from_env(None, false, None));
+    }
+
+    #[test]
+    fn detect_apple_terminal_from_tmux_passthrough() {
+        // tmux rewrites TERM_PROGRAM to "tmux"; TERM_SESSION_ID leaks through
+        // and matches Apple Terminal's wNtNpN:UUID format.
+        assert!(detect_apple_terminal_from_env(
+            Some("tmux"),
+            true,
+            Some("w0t0p0:01234567-89AB-CDEF-0123-456789ABCDEF"),
+        ));
+        // tmux without a passed-through TERM_SESSION_ID — can't tell.
+        assert!(!detect_apple_terminal_from_env(Some("tmux"), true, None));
+        // TERM_SESSION_ID without TMUX env var: only trust TERM_PROGRAM
+        // (avoids false positives from any other host that happens to set
+        // TERM_SESSION_ID with a similar shape).
+        assert!(!detect_apple_terminal_from_env(
+            None,
+            false,
+            Some("w0t0p0:abc"),
+        ));
+        // TERM_SESSION_ID that doesn't match Apple Terminal's shape.
+        assert!(!detect_apple_terminal_from_env(
+            Some("tmux"),
+            true,
+            Some("not-apple-terminal-id"),
+        ));
+    }
+
+    #[tokio::test]
+    async fn ime_redraw_triggered_on_cjk() {
+        let mut app = test_app();
+        app.state.is_apple_terminal = true;
+        app.state.apple_terminal_ime_redraw = true;
+        app.handle_raw_input_event(raw_key(
+            KeyCode::Char('中'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+        ))
+        .await;
+        assert!(app.full_redraw_pending);
+    }
+
+    #[tokio::test]
+    async fn ime_redraw_not_triggered_on_ascii() {
+        let mut app = test_app();
+        app.state.is_apple_terminal = true;
+        app.state.apple_terminal_ime_redraw = true;
+        app.handle_raw_input_event(raw_key(
+            KeyCode::Char('a'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+        ))
+        .await;
+        assert!(!app.full_redraw_pending);
+    }
+
+    #[tokio::test]
+    async fn ime_redraw_not_triggered_when_disabled() {
+        let mut app = test_app();
+        app.state.is_apple_terminal = true;
+        app.state.apple_terminal_ime_redraw = false;
+        app.handle_raw_input_event(raw_key(
+            KeyCode::Char('中'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+        ))
+        .await;
+        assert!(!app.full_redraw_pending);
+    }
+
+    #[tokio::test]
+    async fn ime_redraw_not_triggered_outside_apple_terminal() {
+        let mut app = test_app();
+        app.state.is_apple_terminal = false;
+        app.state.apple_terminal_ime_redraw = true;
+        app.handle_raw_input_event(raw_key(
+            KeyCode::Char('中'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+        ))
+        .await;
+        assert!(!app.full_redraw_pending);
+    }
+
+    #[tokio::test]
+    async fn ime_redraw_not_triggered_with_modifier() {
+        let mut app = test_app();
+        app.state.is_apple_terminal = true;
+        app.state.apple_terminal_ime_redraw = true;
+        app.handle_raw_input_event(raw_key(
+            KeyCode::Char('中'),
+            KeyModifiers::SHIFT,
+            KeyEventKind::Press,
+        ))
+        .await;
+        assert!(!app.full_redraw_pending);
     }
 
     #[test]

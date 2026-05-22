@@ -965,6 +965,14 @@ pub struct AppState {
     pub prompt_new_tab_name: bool,
     pub show_agent_labels_on_pane_borders: bool,
     pub kitty_graphics_enabled: bool,
+    /// True when the host terminal is detected to be Apple Terminal (directly
+    /// or via tmux nested inside it). Set once at startup; never changes for
+    /// the lifetime of the process.
+    pub is_apple_terminal: bool,
+    /// Effective value of `[experimental] apple_terminal_ime_redraw`. Forces
+    /// a full redraw after each non-ASCII Char key arrives from stdin, to
+    /// repair pane borders corrupted by Apple Terminal's inline IME preedit.
+    pub apple_terminal_ime_redraw: bool,
     pub default_shell: String,
     pub pane_scrollback_limit_bytes: usize,
     #[allow(dead_code)] // kept for backward compat; palette.accent is the source of truth
@@ -1212,6 +1220,8 @@ impl AppState {
             prompt_new_tab_name: true,
             show_agent_labels_on_pane_borders: false,
             kitty_graphics_enabled: false,
+            is_apple_terminal: false,
+            apple_terminal_ime_redraw: false,
             default_shell: String::new(),
             pane_scrollback_limit_bytes: crate::config::DEFAULT_SCROLLBACK_LIMIT_BYTES,
             accent: Color::Cyan,
